@@ -2,7 +2,7 @@ import pytest
 
 from scalper.broker import Account
 from scalper.local_config import LocalConfig, env_bool
-from scalper.mcp_client import raw_tool_name
+from scalper.mcp_client import parse_authorization_result, raw_tool_name
 from scalper.runner import require_demo_account
 from scalper.runtime import DailyLossGuard
 
@@ -64,3 +64,16 @@ def test_demo_gate_blocks_live_account() -> None:
 def test_demo_gate_allows_demo_account() -> None:
     demo = Account("D1", True, "USD", 10000.0, 10000.0, "HEDGE")
     require_demo_account(demo, True)
+
+
+def test_oauth_redirect_parser() -> None:
+    result = parse_authorization_result(
+        "http://localhost:3030/callback?code=abc123&state=state456"
+    )
+    assert result.code == "abc123"
+    assert result.state == "state456"
+
+
+def test_oauth_redirect_parser_requires_code_and_state() -> None:
+    with pytest.raises(RuntimeError, match="missing code/state"):
+        parse_authorization_result("http://localhost:3030/callback")

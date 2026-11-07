@@ -124,10 +124,13 @@ The browser opens PrimeXBT authorization.
 During authorization:
 
 1. Sign in to PrimeXBT.
-2. Select/authorize the **PXTrader 2.0 Demo account**.
-3. Complete the consent screen.
-4. When your browser is redirected, copy the **entire redirected URL** from the address bar.
-5. Paste that full URL into the PowerShell prompt.
+2. On PrimeXBT's OAuth screen, explicitly choose the **PXTrader 2.0 Demo account**.
+3. Choose the access level and complete the consent screen.
+4. PrimeXBT redirects to `http://localhost:3030/callback`.
+5. The local A+ Scalper process now listens on port 3030 and captures the OAuth code automatically.
+6. The browser should show **PrimeXBT authorization received**; return to PowerShell.
+
+PrimeXBT allows exactly one trading account per MCP connection. If you choose a Live account, the local demo-only safety gate rejects it and you must reconnect to the Demo account.
 
 OAuth state is stored locally at:
 
@@ -315,9 +318,22 @@ aplus connect
 
 Select Demo during PrimeXBT authorization.
 
+### Browser shows `localhost refused to connect`
+
+Update to the latest code and reinstall:
+
+```powershell
+git pull origin main
+pip install -e ".[dev]"
+```
+
+The current version starts a temporary callback listener on `localhost:3030`, so the redirect is captured automatically.
+
+If port 3030 is already occupied, the client prints a fallback message and asks you to paste the complete redirect URL manually.
+
 ### OAuth redirect error
 
-Copy the entire browser URL, including `code=` and `state=`, and paste it into PowerShell.
+If the automatic callback falls back to manual mode, copy the entire browser URL, including `code=` and `state=`, and paste it into PowerShell.
 
 ### `configured PrimeXBT account was not returned by list_accounts`
 
