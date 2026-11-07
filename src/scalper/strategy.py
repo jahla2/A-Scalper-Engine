@@ -6,6 +6,7 @@ from .models import (
     Bar,
     Direction,
     ExecutionSignal,
+    MarketBias,
     Regime,
     Score,
     Setup,
@@ -14,6 +15,100 @@ from .models import (
 from .session import preferred_scalping_window
 from .structure import classify_structure, find_swings, recent_bos
 
+
+
+def market_bias(bars: list[Bar], settings: Settings) -> MarketBias:
+    """Directional rule alignment, not a calibrated win probability."""
+    cfg = settings.indicators
+    closes = [bar.close for bar in bars]
+    minimum = cfg.ema_slow + cfg.ema_slope_bars + 1
+    if len(closes) < minimum:
+        return MarketBias(
+            Direction.NEUTRAL,
+            0,
+            0,
+            0,
+            {
+                "price_vs_ema200": "UNKNOWN",
+                "ema_alignment": "UNKNOWN",
+                "ema_slope": "UNKNOWN",
+                "structure": "UNKNOWN",
+            },
+            ("Not enough closed 1H bars for directional alignment.",),
+        )
+
+    fast = ema(closes, cfg.ema_fast)
+    slow = ema(closes, cfg.ema_slow)
+    close = closes[-1]
+    swings = find_swings(bars, settings.structure.swing_left, settings.structure.swing_right)
+    market_structure = classify_structure(swings)
+
+    components: dict[str, str] = {}
+    long_score = 0
+    short_score = 0
+    reasons: list[str] = []
+
+    if close > slow[-1]:
+        components["price_vs_ema200"] = "LONG"
+        long_score += 25
+        reasons.append("Price is above EMA200.")
+    elif close < slow[-1]:
+        components["price_vs_ema200"] = "SHORT"
+        short_score += 25
+        reasons.append("Price is below EMA200.")
+    else:
+        components["price_vs_ema200"] = "NEUTRAL"
+
+    if fast[-1] > slow[-1]:
+        components["ema_alignment"] = "LONG"
+        long_score += 25
+        reasons.append("EMA50 is above EMA200.")
+    elif fast[-1] < slow[-1]:
+        components["ema_alignment"] = "SHORT"
+        short_score += 25
+        reasons.append("EMA50 is below EMA200.")
+    else:
+        components["ema_alignment"] = "NEUTRAL"
+
+    previous_fast = fast[-1 - cfg.ema_slope_bars]
+    if fast[-1] > previous_fast:
+        components["ema_slope"] = "LONG"
+        long_score += 25
+        reasons.append("EMA50 slope is rising.")
+    elif fast[-1] < previous_fast:
+        components["ema_slope"] = "SHORT"
+        short_score += 25
+        reasons.append("EMA50 slope is falling.")
+    else:
+        components["ema_slope"] = "NEUTRAL"
+
+    if market_structure == "HH_HL":
+        components["structure"] = "LONG"
+        long_score += 25
+        reasons.append("1H swing structure is HH/HL.")
+    elif market_structure == "LH_LL":
+        components["structure"] = "SHORT"
+        short_score += 25
+        reasons.append("1H swing structure is LH/LL.")
+    else:
+        components["structure"] = "NEUTRAL"
+        reasons.append("1H swing structure is mixed or unconfirmed.")
+
+    if long_score > short_score:
+        direction = Direction.LONG
+    elif short_score > long_score:
+        direction = Direction.SHORT
+    else:
+        direction = Direction.NEUTRAL
+
+    return MarketBias(
+        direction,
+        long_score,
+        short_score,
+        max(long_score, short_score),
+        components,
+        tuple(reasons),
+    )
 
 def regime(bars: list[Bar], settings: Settings) -> Regime:
     cfg = settings.indicators

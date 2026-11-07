@@ -9,13 +9,14 @@ from .models import (
     Decision,
     Direction,
     ExecutionSignal,
+    MarketBias,
     Score,
     Setup,
     Signal,
     StructureSignal,
 )
 from .risk import make_trade_plan, opposing_level, structural_stop
-from .strategy import execution, regime, score_setup, setup
+from .strategy import execution, market_bias, regime, score_setup, setup
 from .structure import recent_bos
 from .timeframes import closed_bars
 
@@ -45,21 +46,44 @@ class ScalperEngine:
             Direction.NEUTRAL, False, None, None, None, False, False, 0.0, "not evaluated"
         )
         empty_execution = ExecutionSignal(False, False, "UNKNOWN")
-        empty_score = Score(0, self.settings.score.threshold, {})
-
         reg = regime(bars_1h, self.settings)
+        bias = market_bias(bars_1h, self.settings)
         if reg.direction == Direction.NEUTRAL:
             return Signal(
                 "A_PLUS_SCALPER_V1", symbol, now, Decision.NO_TRADE, reg.direction,
-                empty_score, reg, empty_setup, empty_structure, empty_execution, None,
-                ("1H regime is neutral",),
+                bias,
+                score_setup(
+                    reg,
+                    empty_setup,
+                    empty_structure,
+                    empty_execution,
+                    False,
+                    now,
+                    self.settings,
+                ),
+                reg, empty_setup, empty_structure, empty_execution, None,
+                (
+                    "Strict 1H regime is neutral; trend and swing structure are not fully aligned.",
+                    f"Directional alignment currently leans {bias.direction.value} "
+                    f"({bias.strength}/100 rule alignment).",
+                ),
             )
 
         stp = setup(bars_15m, reg.direction, self.settings)
         if not stp.valid:
             return Signal(
                 "A_PLUS_SCALPER_V1", symbol, now, Decision.NO_TRADE, reg.direction,
-                empty_score, reg, stp, empty_structure, empty_execution, None,
+                bias,
+                score_setup(
+                    reg,
+                    stp,
+                    empty_structure,
+                    empty_execution,
+                    False,
+                    now,
+                    self.settings,
+                ),
+                reg, stp, empty_structure, empty_execution, None,
                 (stp.reason,),
             )
 
@@ -67,7 +91,17 @@ class ScalperEngine:
         if not structure.bos:
             return Signal(
                 "A_PLUS_SCALPER_V1", symbol, now, Decision.WATCH, reg.direction,
-                empty_score, reg, stp, structure, empty_execution, None,
+                bias,
+                score_setup(
+                    reg,
+                    stp,
+                    structure,
+                    empty_execution,
+                    False,
+                    now,
+                    self.settings,
+                ),
+                reg, stp, structure, empty_execution, None,
                 ("setup valid; waiting for confirmed 5M BOS",),
             )
 

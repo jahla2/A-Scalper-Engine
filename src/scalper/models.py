@@ -53,6 +53,16 @@ class Regime:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketBias:
+    direction: Direction
+    long_alignment: int
+    short_alignment: int
+    strength: int
+    components: dict[str, str]
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Setup:
     valid: bool
     location_valid: bool
@@ -106,6 +116,7 @@ class Signal:
     timestamp: int
     decision: Decision
     direction: Direction
+    bias: MarketBias
     score: Score
     regime: Regime
     setup: Setup
@@ -118,6 +129,7 @@ class Signal:
         data = asdict(self)
         data["decision"] = self.decision.value
         data["direction"] = self.direction.value
+        data["bias"]["direction"] = self.bias.direction.value
         data["regime"]["direction"] = self.regime.direction.value
         data["structure"]["direction"] = self.structure.direction.value
         return data
