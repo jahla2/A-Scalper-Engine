@@ -25,6 +25,8 @@ class CachedBroker:
         self._quote_ttl = quote_ttl
         self._snapshot_ttl = snapshot_ttl
         self._max_bars = max_bars_per_series
+        self._resolved_symbols: dict[str, str] = {}
+        self._symbol_info: dict[str, SymbolInfo] = {}
         self._bars: dict[tuple[str, str], list[Bar]] = {}
         self._bar_locks: defaultdict[tuple[str, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._quotes: dict[str, tuple[float, Quote]] = {}
@@ -42,13 +44,24 @@ class CachedBroker:
         return await self._broker.account()
 
     async def resolve_symbol(self, query: str) -> str:
-        return await self._broker.resolve_symbol(query)
+        cached = self._resolved_symbols.get(query)
+        if cached:
+            return cached
+        value = await self._broker.resolve_symbol(query)
+        self._resolved_symbols[query] = value
+        self._resolved_symbols[value] = value
+        return value
 
     async def search_symbols(self, query: str) -> list[dict[str, Any]]:
         return await self._broker.search_symbols(query)
 
     async def symbol_info(self, symbol: str) -> SymbolInfo:
-        return await self._broker.symbol_info(symbol)
+        cached = self._symbol_info.get(symbol)
+        if cached:
+            return cached
+        value = await self._broker.symbol_info(symbol)
+        self._symbol_info[symbol] = value
+        return value
 
     async def bars(self, symbol: str, bar_size: str, limit: int) -> list[Bar]:
         key = (symbol, bar_size)

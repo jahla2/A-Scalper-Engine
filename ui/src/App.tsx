@@ -36,6 +36,7 @@ export default function App() {
   const [results, setResults] = useState<SymbolSearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanBusy, setScanBusy] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadChart = useCallback(async (selected: string, tf: Timeframe) => {
@@ -82,6 +83,16 @@ export default function App() {
       const next = event.data as Quote;
       if (next.symbol === symbol) setQuote(next);
     }
+    if (event.type === "bar.updated") {
+      const payload = event.data as {
+        symbol: string;
+        timeframe: string;
+        bar: ChartPayload["bars"][number];
+      };
+      if (payload.symbol === symbol) {
+        setChart((current) => updateChartBar(current, payload.bar, timeframe));
+      }
+    }
     if (event.type === "analysis.updated") {
       const next = event.data as Analysis;
       if (next.symbol === symbol) {
@@ -89,6 +100,10 @@ export default function App() {
         setHistory((items) => [next, ...items].slice(0, 100));
         void loadChart(symbol, timeframe);
       }
+    }
+    if (event.type === "settings.updated") {
+      const runtime = event.data as SettingsPayload["runtime"];
+      setSettings((current) => current ? { ...current, runtime } : current);
     }
     if (event.type === "system.error") {
       const payload = event.data as { message?: string };
@@ -123,6 +138,20 @@ export default function App() {
       setResults(response.items);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+
+  const saveRuntimeSettings = async () => {
+    if (!settings) return;
+    setSettingsBusy(true);
+    setError(null);
+    try {
+      const response = await api.updateRuntime(settings.runtime);
+      setSettings({ ...settings, runtime: response.runtime });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSettingsBusy(false);
     }
   };
 
@@ -358,15 +387,57 @@ export default function App() {
               copy="Backend cadence and trading safeguards currently active."
             />
             <div className="settings-grid">
-              <SettingsCard title="Runtime">
-                <Detail name="Quote polling" value={(settings?.runtime.quote_poll_seconds ?? 0) + "s"} />
-                <Detail name="1M candle polling" value={(settings?.runtime.bar_poll_seconds ?? 0) + "s"} />
-                <Detail name="Account polling" value={(settings?.runtime.account_poll_seconds ?? 0) + "s"} />
-                <Detail
-                  name="Daily drawdown guard"
-                  value={(settings?.runtime.max_daily_drawdown_pct ?? 0) + "%"}
-                />
-              </SettingsCard>
+              <section className="panel settings-card">
+                <div className="settings-title-row">
+                  <h2>Runtime</h2>
+                  <span>Session settings</span>
+                </div>
+                <div className="settings-form">
+                  <RuntimeField
+                    label="Quote polling"
+                    value={settings?.runtime.quote_poll_seconds ?? 2}
+                    suffix="seconds"
+                    onChange={(value) => setSettings((current) => current ? {
+                      ...current,
+                      runtime: { ...current.runtime, quote_poll_seconds: value }
+                    } : current)}
+                  />
+                  <RuntimeField
+                    label="1M candle polling"
+                    value={settings?.runtime.bar_poll_seconds ?? 5}
+                    suffix="seconds"
+                    onChange={(value) => setSettings((current) => current ? {
+                      ...current,
+                      runtime: { ...current.runtime, bar_poll_seconds: value }
+                    } : current)}
+                  />
+                  <RuntimeField
+                    label="Account polling"
+                    value={settings?.runtime.account_poll_seconds ?? 10}
+                    suffix="seconds"
+                    onChange={(value) => setSettings((current) => current ? {
+                      ...current,
+                      runtime: { ...current.runtime, account_poll_seconds: value }
+                    } : current)}
+                  />
+                  <RuntimeField
+                    label="Daily drawdown guard"
+                    value={settings?.runtime.max_daily_drawdown_pct ?? 2}
+                    suffix="%"
+                    onChange={(value) => setSettings((current) => current ? {
+                      ...current,
+                      runtime: { ...current.runtime, max_daily_drawdown_pct: value }
+                    } : current)}
+                  />
+                  <button
+                    className="primary-button settings-save"
+                    disabled={settingsBusy}
+                    onClick={saveRuntimeSettings}
+                  >
+                    {settingsBusy ? "Saving" : "Apply runtime settings"}
+                  </button>
+                </div>
+              </section>
               <SettingsCard title="Strategy">
                 <Detail name="A+ threshold" value={String(settings?.strategy.score_threshold ?? 85)} />
                 <Detail name="Timeframes" value={settings?.strategy.timeframes.join(" · ") ?? "—"} />
@@ -410,4 +481,62 @@ function SettingsCard(props: { title: string; children: React.ReactNode }) {
       <dl className="detail-list">{props.children}</dl>
     </section>
   );
+}
+
+function RuntimeField(props: {
+  label: string;
+  value: number;
+  suffix: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="runtime-field">
+      <span>{props.label}</span>
+      <div>
+        <input
+          type="number"
+          min="0.5"
+          step="0.5"
+          value={props.value}
+          onChange={(event) => props.onChange(Number(event.target.value))}
+        />
+        <small>{props.suffix}</small>
+      </div>
+    </label>
+  );
+}
+
+function updateChartBar(
+  current: ChartPayload | null,
+  incoming: ChartPayload["bars"][number],
+  timeframe: Timeframe
+): ChartPayload | null {
+  if (!current) return current;
+  const seconds: Record<Timeframe, number> = {
+    "1M": 60,
+    "5M": 300,
+    "15M": 900,
+    "30M": 1800,
+    "1H": 3600,
+    "4H": 14400,
+    "1D": 86400
+  };
+  const interval = seconds[timeframe];
+  const bucket = Math.floor(incoming.time / interval) * interval;
+  const bars = [...current.bars];
+  const last = bars[bars.length - 1];
+
+  if (!last || bucket > last.time) {
+    bars.push({ ...incoming, time: bucket });
+  } else if (bucket === last.time) {
+    bars[bars.length - 1] = timeframe === "1M"
+      ? incoming
+      : {
+          ...last,
+          high: Math.max(last.high, incoming.high),
+          low: Math.min(last.low, incoming.low),
+          close: incoming.close
+        };
+  }
+  return { ...current, bars };
 }

@@ -25,6 +25,13 @@ class SymbolRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=80)
 
 
+class RuntimeSettingsRequest(BaseModel):
+    quote_poll_seconds: float | None = Field(default=None, ge=0.5, le=60)
+    bar_poll_seconds: float | None = Field(default=None, ge=0.5, le=60)
+    account_poll_seconds: float | None = Field(default=None, ge=0.5, le=60)
+    max_daily_drawdown_pct: float | None = Field(default=None, ge=0.1, le=20)
+
+
 def _context(request: Request) -> AppContext:
     return request.app.state.context
 
@@ -87,7 +94,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[LocalConfig.from_env().ui_origin],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["*"],
 )
 
@@ -220,13 +227,9 @@ async def history(
 @app.get("/api/settings")
 async def settings(request: Request) -> dict[str, Any]:
     config = request.app.state.config
+    context = _context(request)
     return {
-        "runtime": {
-            "quote_poll_seconds": config.quote_poll_seconds,
-            "bar_poll_seconds": config.bar_poll_seconds,
-            "account_poll_seconds": config.account_poll_seconds,
-            "max_daily_drawdown_pct": config.max_daily_drawdown_pct,
-        },
+        "runtime": context.supervisor.runtime_settings(),
         "strategy": {
             "score_threshold": 85,
             "timeframes": ["1M", "5M", "15M", "1H"],
@@ -236,6 +239,19 @@ async def settings(request: Request) -> dict[str, Any]:
             "live_execution": False,
         },
     }
+
+
+@app.patch("/api/settings/runtime")
+async def update_runtime_settings(
+    request: Request,
+    body: RuntimeSettingsRequest,
+) -> dict[str, Any]:
+    values = body.model_dump(exclude_none=True)
+    try:
+        runtime = _context(request).supervisor.update_runtime(**values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"runtime": runtime}
 
 
 @app.websocket("/ws")

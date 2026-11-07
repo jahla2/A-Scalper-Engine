@@ -77,6 +77,46 @@ class MarketSupervisor:
         self.events.publish("symbol.changed", {"symbol": symbol})
         return symbol
 
+    def update_runtime(
+        self,
+        *,
+        quote_poll_seconds: float | None = None,
+        bar_poll_seconds: float | None = None,
+        account_poll_seconds: float | None = None,
+        max_daily_drawdown_pct: float | None = None,
+    ) -> dict[str, float]:
+        values = {
+            "quote_poll_seconds": quote_poll_seconds,
+            "bar_poll_seconds": bar_poll_seconds,
+            "account_poll_seconds": account_poll_seconds,
+        }
+        for name, value in values.items():
+            if value is not None and not 0.5 <= value <= 60:
+                raise ValueError(f"{name} must be between 0.5 and 60 seconds")
+        if max_daily_drawdown_pct is not None and not 0.1 <= max_daily_drawdown_pct <= 20:
+            raise ValueError("max_daily_drawdown_pct must be between 0.1 and 20")
+
+        if quote_poll_seconds is not None:
+            self.quote_poll_seconds = quote_poll_seconds
+        if bar_poll_seconds is not None:
+            self.bar_poll_seconds = bar_poll_seconds
+        if account_poll_seconds is not None:
+            self.account_poll_seconds = account_poll_seconds
+        if max_daily_drawdown_pct is not None:
+            self.guard.max_drawdown_pct = max_daily_drawdown_pct
+
+        payload = self.runtime_settings()
+        self.events.publish("settings.updated", payload)
+        return payload
+
+    def runtime_settings(self) -> dict[str, float]:
+        return {
+            "quote_poll_seconds": self.quote_poll_seconds,
+            "bar_poll_seconds": self.bar_poll_seconds,
+            "account_poll_seconds": self.account_poll_seconds,
+            "max_daily_drawdown_pct": self.guard.max_drawdown_pct,
+        }
+
     async def scan_now(self, symbol: str | None = None) -> dict[str, Any]:
         selected = symbol or self.selected_symbol
         async with self._scan_lock:

@@ -22,6 +22,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   status: () => request<AppStatus>("/api/status"),
   settings: () => request<SettingsPayload>("/api/settings"),
+  updateRuntime: (runtime: SettingsPayload["runtime"]) =>
+    request<{ runtime: SettingsPayload["runtime"] }>("/api/settings/runtime", {
+      method: "PATCH",
+      body: JSON.stringify(runtime)
+    }),
   bars: (symbol: string, timeframe: Timeframe, limit = 300) =>
     request<ChartPayload>(
       "/api/market/bars?symbol=" + encodeURIComponent(symbol) +
