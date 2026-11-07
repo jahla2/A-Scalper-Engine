@@ -141,7 +141,8 @@ def _vwap_momentum(
         structure,
         exe,
         (
-            "1H trend context, 15M VWAP location, 5M structure and 1M VWAP execution were evaluated.",
+            "1H trend context, 15M VWAP location, 5M structure and "
+            "1M VWAP execution were evaluated.",
         ),
     )
 
@@ -166,7 +167,8 @@ def _ichimoku_mtf(
         structure,
         exe,
         (
-            "1H Ichimoku cloud, 15M Kijun/cloud location, 5M structure and 1M Tenkan/Kijun execution were evaluated.",
+            "1H Ichimoku cloud, 15M Kijun/cloud location, 5M structure and "
+            "1M Tenkan/Kijun execution were evaluated.",
         ),
     )
 
@@ -209,7 +211,14 @@ def _ema_regime(bars: list[Bar], settings: Settings) -> tuple[MarketBias, Regime
         direction = Direction.SHORT
     else:
         direction = Direction.NEUTRAL
-    return bias, Regime(direction, close, ema20[-1], ema50[-1], structure, long_regime or short_regime)
+    return bias, Regime(
+        direction,
+        close,
+        ema20[-1],
+        ema50[-1],
+        structure,
+        long_regime or short_regime,
+    )
 
 
 def _ema_setup(bars: list[Bar], direction: Direction, settings: Settings) -> Setup:
@@ -291,7 +300,14 @@ def _vwap_regime(bars: list[Bar], settings: Settings) -> tuple[MarketBias, Regim
         direction = Direction.SHORT
     else:
         direction = Direction.NEUTRAL
-    return bias, Regime(direction, close, ema50[-1], ema200[-1], structure, long_regime or short_regime)
+    return bias, Regime(
+        direction,
+        close,
+        ema50[-1],
+        ema200[-1],
+        structure,
+        long_regime or short_regime,
+    )
 
 
 def _vwap_setup(bars: list[Bar], direction: Direction, settings: Settings) -> Setup:
