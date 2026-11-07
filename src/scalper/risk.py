@@ -47,7 +47,16 @@ def make_trade_plan(
     equity: float,
     risk: RiskConfig,
     obstacle: float | None = None,
+    *,
+    status: str = "PROVISIONAL",
+    entry_reason: str = "Current executable quote after structure confirmation.",
 ) -> TradePlan | None:
+    """Build a deterministic three-target plan from structural risk.
+
+    TP3 is the final target. It starts at target_rr and is capped by the nearest
+    opposing 15M swing. TP1/TP2 are deterministic milestones toward the reachable
+    final target. If the final target cannot satisfy min_rr, no plan is returned.
+    """
     distance = abs(entry - stop)
     if distance <= 0:
         return None
@@ -56,24 +65,69 @@ def make_trade_plan(
     if direction == Direction.SHORT and stop <= entry:
         return None
 
-    target_distance = distance * risk.target_rr
-    target = entry + target_distance if direction == Direction.LONG else entry - target_distance
-
+    obstacle_rr: float | None = None
+    valid_obstacle = False
     if obstacle is not None:
-        if direction == Direction.LONG and obstacle > entry:
-            target = min(target, obstacle)
-        elif direction == Direction.SHORT and obstacle < entry:
-            target = max(target, obstacle)
+        valid_obstacle = (
+            direction == Direction.LONG and obstacle > entry
+        ) or (
+            direction == Direction.SHORT and obstacle < entry
+        )
+        if valid_obstacle:
+            obstacle_rr = abs(obstacle - entry) / distance
 
-    rr = abs(target - entry) / distance
-    if rr + 1e-9 < risk.min_rr:
+    final_rr = risk.target_rr
+    if obstacle_rr is not None:
+        final_rr = min(final_rr, obstacle_rr)
+
+    if final_rr + 1e-9 < risk.min_rr:
         return None
+
+    rr1 = min(1.0, final_rr * 0.50)
+    rr2 = min(1.5, final_rr * 0.75)
+    rr3 = final_rr
+
+    def price_at(rr_value: float) -> float:
+        delta = distance * rr_value
+        return entry + delta if direction == Direction.LONG else entry - delta
+
+    tp1 = price_at(rr1)
+    tp2 = price_at(rr2)
+    tp3 = price_at(rr3)
+
+    if obstacle_rr is not None and obstacle_rr <= risk.target_rr + 1e-9:
+        tp3_reason = (
+            f"Final target capped by nearest opposing 15M swing at {obstacle:.6f}; "
+            f"reachable RR is {rr3:.2f}R."
+        )
+    else:
+        tp3_reason = f"Final target uses configured {risk.target_rr:.2f}R objective."
+
+    side = "below" if direction == Direction.LONG else "above"
+    swing_kind = "5M swing low" if direction == Direction.LONG else "5M swing high"
+
     return TradePlan(
+        status=status,
         entry=entry,
         stop_loss=stop,
-        take_profit=target,
-        rr=rr,
+        take_profit=tp3,
+        tp1=tp1,
+        tp2=tp2,
+        tp3=tp3,
+        rr=rr3,
+        rr1=rr1,
+        rr2=rr2,
+        rr3=rr3,
         risk_budget=equity * (risk.risk_pct / 100.0),
+        obstacle=obstacle if valid_obstacle else None,
+        entry_reason=entry_reason,
+        stop_reason=(
+            f"Invalidation sits {side} the latest confirmed {swing_kind} "
+            f"with a {risk.stop_atr_buffer:.2f} ATR buffer."
+        ),
+        tp1_reason=f"First partial milestone at {rr1:.2f}R.",
+        tp2_reason=f"Second partial milestone at {rr2:.2f}R.",
+        tp3_reason=tp3_reason,
     )
 
 
