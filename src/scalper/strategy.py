@@ -16,7 +16,6 @@ from .session import preferred_scalping_window
 from .structure import classify_structure, find_swings, recent_bos
 
 
-
 def market_bias(bars: list[Bar], settings: Settings) -> MarketBias:
     """Directional rule alignment, not a calibrated win probability."""
     cfg = settings.indicators
@@ -109,6 +108,7 @@ def market_bias(bars: list[Bar], settings: Settings) -> MarketBias:
         components,
         tuple(reasons),
     )
+
 
 def regime(bars: list[Bar], settings: Settings) -> Regime:
     cfg = settings.indicators

@@ -201,7 +201,7 @@ async def scan(request: Request, body: SymbolRequest | None = None) -> dict[str,
     symbol = body.symbol if body else context.supervisor.selected_symbol
     try:
         resolved = await context.broker.resolve_symbol(symbol)
-        return await context.supervisor.scan_now(resolved)
+        return await context.supervisor.manual_scan(resolved)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
