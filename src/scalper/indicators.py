@@ -88,6 +88,35 @@ def session_vwap(bars: list[Bar], timezone: str = "Asia/Manila") -> float:
     return fallback_sum / max(1, fallback_count)
 
 
+
+def session_vwap_series(bars: list[Bar], timezone: str = "Asia/Manila") -> list[float]:
+    if not bars:
+        return []
+    zone = ZoneInfo(timezone)
+    result: list[float] = []
+    current_day = None
+    weighted = 0.0
+    volume = 0.0
+    fallback_sum = 0.0
+    fallback_count = 0
+    for bar in bars:
+        day = datetime.fromtimestamp(bar.t, zone).date()
+        if day != current_day:
+            current_day = day
+            weighted = 0.0
+            volume = 0.0
+            fallback_sum = 0.0
+            fallback_count = 0
+        typical = (bar.high + bar.low + bar.close) / 3.0
+        fallback_sum += typical
+        fallback_count += 1
+        if bar.volume > 0:
+            weighted += typical * bar.volume
+            volume += bar.volume
+        value = weighted / volume if volume > 0 else fallback_sum / fallback_count
+        result.append(value)
+    return result
+
 def body_ratio(bar: Bar) -> float:
     if bar.range <= 0:
         return 0.0

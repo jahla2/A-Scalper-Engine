@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  backend:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -26,3 +26,20 @@ jobs:
         run: ruff check src tests
       - name: Tests
         run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package.json
+      - name: Install
+        run: npm install
+      - name: Typecheck and build
+        run: npm run build
