@@ -12,12 +12,22 @@ export interface Quote {
   updated_at?: string;
 }
 
+export interface MarketBias {
+  direction: Direction;
+  long_alignment: number;
+  short_alignment: number;
+  strength: number;
+  components: Record<string, string>;
+  reasons: string[];
+}
+
 export interface Analysis {
   strategy: string;
   symbol: string;
   timestamp: number;
   decision: Decision;
   direction: Direction;
+  bias?: MarketBias;
   score: { total: number; threshold: number; parts: Record<string, number> };
   regime: {
     direction: Direction;
@@ -59,6 +69,9 @@ export interface Analysis {
     equity: number;
     daily_drawdown_pct: number;
     risk_guard_allowed: boolean;
+    scan_source?: string;
+    scan_cached?: boolean;
+    scan_cooldown_remaining?: number;
   };
 }
 
@@ -87,6 +100,7 @@ export interface AppStatus {
     status: string;
     selected_symbol: string;
     last_scan_at: number | null;
+    last_scan_source?: string | null;
     last_error: string | null;
     websocket_clients: number;
     mcp_requests: Record<string, number>;
@@ -102,7 +116,13 @@ export interface SettingsPayload {
     account_poll_seconds: number;
     max_daily_drawdown_pct: number;
   };
-  strategy: { score_threshold: number; timeframes: string[] };
+  strategy: {
+    name: string;
+    engine: string;
+    llm_required: boolean;
+    score_threshold: number;
+    timeframes: string[];
+  };
   safety: { require_demo: boolean; live_execution: boolean };
 }
 

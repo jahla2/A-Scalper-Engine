@@ -201,7 +201,7 @@ async def scan(request: Request, body: SymbolRequest | None = None) -> dict[str,
     symbol = body.symbol if body else context.supervisor.selected_symbol
     try:
         resolved = await context.broker.resolve_symbol(symbol)
-        return await context.supervisor.scan_now(resolved)
+        return await context.supervisor.manual_scan(resolved)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -232,6 +232,9 @@ async def settings(request: Request) -> dict[str, Any]:
     return {
         "runtime": context.supervisor.runtime_settings(),
         "strategy": {
+            "name": "A_PLUS_SCALPER_V1",
+            "engine": "deterministic_rules",
+            "llm_required": False,
             "score_threshold": 85,
             "timeframes": ["1M", "5M", "15M", "1H"],
         },

@@ -97,8 +97,10 @@ export default function App() {
       const next = event.data as Analysis;
       if (next.symbol === symbol) {
         setAnalysis(next);
-        setHistory((items) => [next, ...items].slice(0, 100));
-        void loadChart(symbol, timeframe);
+        setHistory((items) => prependAnalysis(items, next));
+        if (next.runtime?.scan_source === "candle_close") {
+          void loadChart(symbol, timeframe);
+        }
       }
     }
     if (event.type === "settings.updated") {
@@ -123,7 +125,9 @@ export default function App() {
     try {
       const next = await api.scan(symbol);
       setAnalysis(next);
-      setHistory((items) => [next, ...items].slice(0, 100));
+      if (!next.runtime?.scan_cached) {
+        setHistory((items) => prependAnalysis(items, next));
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -239,10 +243,13 @@ export default function App() {
                 <Metric label="Bid" value={quote?.bid} />
                 <Metric label="Ask" value={quote?.ask} />
                 <Metric label="Spread" value={quote?.spread} />
-                <button className="primary-button" disabled={scanBusy} onClick={runScan}>
-                  <RefreshCw size={16} className={scanBusy ? "spin" : ""} />
-                  {scanBusy ? "Scanning" : "Run scan"}
-                </button>
+                <div className="scan-control">
+                  <button className="primary-button" disabled={scanBusy} onClick={runScan}>
+                    <RefreshCw size={16} className={scanBusy ? "spin" : ""} />
+                    {scanBusy ? "Scanning" : "Run scan"}
+                  </button>
+                  <small>{scanStatus(analysis)}</small>
+                </div>
               </div>
             </section>
 
@@ -287,6 +294,15 @@ export default function App() {
                   ))}
                 </div>
                 <dl className="detail-list">
+                  <Detail name="Strategy" value={analysis?.strategy ?? "A_PLUS_SCALPER_V1"} />
+                  <Detail
+                    name="Directional bias"
+                    value={analysis?.bias ? analysis.bias.direction + " · " + analysis.bias.strength + "/100" : "—"}
+                  />
+                  <Detail
+                    name="Long / Short alignment"
+                    value={analysis?.bias ? analysis.bias.long_alignment + " / " + analysis.bias.short_alignment : "—"}
+                  />
                   <Detail name="1H structure" value={analysis?.regime.structure ?? "—"} />
                   <Detail name="5M BOS" value={analysis?.structure.bos ? "Confirmed" : "No"} />
                   <Detail
@@ -358,7 +374,7 @@ export default function App() {
               <table>
                 <thead>
                   <tr>
-                    <th>Time</th><th>Symbol</th><th>Direction</th>
+                    <th>Time</th><th>Symbol</th><th>Bias</th><th>Strict direction</th>
                     <th>Decision</th><th>Score</th><th>Reason</th>
                   </tr>
                 </thead>
@@ -367,6 +383,11 @@ export default function App() {
                     <tr key={item.timestamp + "-" + index}>
                       <td>{new Date(item.timestamp * 1000).toLocaleString()}</td>
                       <td>{item.symbol}</td>
+                      <td>
+                        <span className={"direction direction-" + (item.bias?.direction ?? "NEUTRAL")}>
+                          {item.bias?.direction ?? "LEGACY"} {item.bias?.strength ?? "—"}
+                        </span>
+                      </td>
                       <td>{item.direction}</td>
                       <td>{item.decision.replaceAll("_", " ")}</td>
                       <td>{item.score.total}</td>
@@ -439,6 +460,9 @@ export default function App() {
                 </div>
               </section>
               <SettingsCard title="Strategy">
+                <Detail name="Model" value={settings?.strategy.name ?? "A_PLUS_SCALPER_V1"} />
+                <Detail name="Engine" value={settings?.strategy.engine ?? "Deterministic rules"} />
+                <Detail name="LLM required" value={settings?.strategy.llm_required ? "Yes" : "No"} />
                 <Detail name="A+ threshold" value={String(settings?.strategy.score_threshold ?? 85)} />
                 <Detail name="Timeframes" value={settings?.strategy.timeframes.join(" · ") ?? "—"} />
                 <Detail name="Execution" value="Analysis only" />
@@ -539,4 +563,29 @@ function updateChartBar(
         };
   }
   return { ...current, bars };
+}
+
+
+function scanStatus(analysis: Analysis | null) {
+  if (!analysis) return "No scan yet";
+  const time = new Date(analysis.timestamp * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  if (analysis.runtime?.scan_cached) {
+    const remaining = analysis.runtime.scan_cooldown_remaining ?? 0;
+    return "Cached result · retry in " + remaining.toFixed(1) + "s";
+  }
+  const source = (analysis.runtime?.scan_source ?? "scan").replaceAll("_", " ");
+  return "Last " + source + " · " + time;
+}
+
+
+function prependAnalysis(items: Analysis[], next: Analysis) {
+  const duplicate = items.some(
+    (item) => item.symbol === next.symbol && item.timestamp === next.timestamp
+  );
+  if (duplicate) return items;
+  return [next, ...items].slice(0, 100);
 }

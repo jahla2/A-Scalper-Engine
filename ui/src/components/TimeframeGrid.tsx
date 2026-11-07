@@ -6,9 +6,12 @@ export function TimeframeGrid(props: { analysis: Analysis | null }) {
   const cards = [
     {
       tf: "1H",
-      title: "Regime",
+      title: "Strict regime",
       value: item?.regime.direction ?? "NEUTRAL",
-      detail: item ? item.regime.structure + " · EMA50 " + item.regime.ema50.toFixed(2) : "Waiting"
+      detail: item
+        ? "Bias " + (item.bias?.direction ?? "UNKNOWN") + " " +
+          (item.bias?.strength ?? 0) + " · Structure " + item.regime.structure
+        : "Waiting"
     },
     {
       tf: "15M",
@@ -19,16 +22,17 @@ export function TimeframeGrid(props: { analysis: Analysis | null }) {
     {
       tf: "5M",
       title: "Structure",
-      value: item?.structure.bos ? "BOS CONFIRMED" : "WAITING BOS",
+      value: item?.structure.bos ? "BOS CONFIRMED" : neutral ? "SKIPPED" : "WAITING BOS",
       detail: item?.structure.reason ?? "Not evaluated"
     },
     {
       tf: "1M",
       title: "Execution",
-      value: item?.execution.confirmed ? "CONFIRMED" : "WAITING",
+      value: item?.execution.confirmed ? "CONFIRMED" : item?.structure.bos ? "WAITING" : "SKIPPED",
       detail: item?.execution.structure ?? "Not evaluated"
     }
   ];
+
   return (
     <div className="timeframe-grid">
       {cards.map((card) => (

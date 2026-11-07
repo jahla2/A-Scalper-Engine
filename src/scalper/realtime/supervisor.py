@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from time import time
+from time import monotonic, time
 from typing import Any
 
 from ..engine import ScalperEngine
@@ -44,16 +44,19 @@ class MarketSupervisor:
         self.latest_analysis: dict[str, dict[str, Any]] = {}
         self.last_error: str | None = None
         self.last_scan_at: int | None = None
+        self.last_scan_source: str | None = None
         self.started_at = int(time())
         self._tasks: list[asyncio.Task[None]] = []
         self._last_closed_1m: dict[str, int] = {}
         self._symbol_lock = asyncio.Lock()
         self._scan_lock = asyncio.Lock()
+        self._last_manual_scan: dict[str, float] = {}
+        self.manual_scan_cooldown_seconds = 3.0
 
     async def start(self) -> None:
         self.selected_symbol = await self.broker.resolve_symbol(self.selected_symbol)
         await self._bootstrap(self.selected_symbol)
-        await self.scan_now(self.selected_symbol)
+        await self.scan_now(self.selected_symbol, source="startup")
         self._tasks = [
             asyncio.create_task(self._quote_loop(), name="quote-loop"),
             asyncio.create_task(self._bar_loop(), name="bar-loop"),
@@ -73,7 +76,7 @@ class MarketSupervisor:
             self.selected_symbol = symbol
             self._last_closed_1m.pop(symbol, None)
             await self._bootstrap(symbol)
-            await self.scan_now(symbol)
+            await self.scan_now(symbol, source="symbol_change")
         self.events.publish("symbol.changed", {"symbol": symbol})
         return symbol
 
@@ -117,7 +120,36 @@ class MarketSupervisor:
             "max_daily_drawdown_pct": self.guard.max_drawdown_pct,
         }
 
-    async def scan_now(self, symbol: str | None = None) -> dict[str, Any]:
+    async def manual_scan(self, symbol: str | None = None) -> dict[str, Any]:
+        selected = symbol or self.selected_symbol
+        now_mono = monotonic()
+        previous = self._last_manual_scan.get(selected)
+        cached = self.latest_analysis.get(selected)
+        if previous is not None and cached is not None:
+            age = now_mono - previous
+            if age < self.manual_scan_cooldown_seconds:
+                response = {
+                    **cached,
+                    "runtime": {
+                        **cached.get("runtime", {}),
+                        "scan_source": "manual_cached",
+                        "scan_cached": True,
+                        "scan_cooldown_remaining": round(
+                            self.manual_scan_cooldown_seconds - age,
+                            2,
+                        ),
+                    },
+                }
+                return response
+        self._last_manual_scan[selected] = now_mono
+        return await self.scan_now(selected, source="manual")
+
+    async def scan_now(
+        self,
+        symbol: str | None = None,
+        *,
+        source: str = "system",
+    ) -> dict[str, Any]:
         selected = symbol or self.selected_symbol
         async with self._scan_lock:
             now = int(time())
@@ -131,6 +163,8 @@ class MarketSupervisor:
                 "equity": equity,
                 "daily_drawdown_pct": drawdown,
                 "risk_guard_allowed": allowed,
+                "scan_source": source,
+                "scan_cached": False,
             }
             payload["market"] = {
                 "open": quote.market_open,
@@ -141,6 +175,7 @@ class MarketSupervisor:
             }
             self.latest_analysis[selected] = payload
             self.last_scan_at = now
+            self.last_scan_source = source
             await self.store.append(payload)
             self.events.publish("analysis.updated", payload)
             return payload
@@ -207,7 +242,7 @@ class MarketSupervisor:
                     if previous is None or latest > previous:
                         self._last_closed_1m[symbol] = latest
                         self._invalidate_boundaries(symbol, latest + 60)
-                        await self.scan_now(symbol)
+                        await self.scan_now(symbol, source="candle_close")
                 self.last_error = None
                 delay = self.bar_poll_seconds
             except Exception as exc:
@@ -230,6 +265,7 @@ class MarketSupervisor:
             "selected_symbol": self.selected_symbol,
             "started_at": self.started_at,
             "last_scan_at": self.last_scan_at,
+            "last_scan_source": self.last_scan_source,
             "last_error": self.last_error,
             "websocket_clients": self.events.subscriber_count,
             "mcp_requests": self.broker.metrics(),
