@@ -14,9 +14,19 @@ def load_env_file(path: str | Path = ".env") -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        os.environ.setdefault(key, value)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true/false")
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +34,7 @@ class LocalConfig:
     mcp_url: str
     symbol: str
     account_id: str | None
+    require_demo: bool
     poll_seconds: float
     max_daily_drawdown_pct: float
     oauth_file: Path
@@ -42,6 +53,7 @@ class LocalConfig:
             mcp_url=os.getenv("PRIMEXBT_MCP_URL", "https://api.primexbt.com/v2/mcp"),
             symbol=os.getenv("SCALPER_SYMBOL", "XAU/USD"),
             account_id=os.getenv("PRIMEXBT_ACCOUNT_ID") or None,
+            require_demo=env_bool("SCALPER_REQUIRE_DEMO", True),
             poll_seconds=poll,
             max_daily_drawdown_pct=drawdown,
             oauth_file=Path(
