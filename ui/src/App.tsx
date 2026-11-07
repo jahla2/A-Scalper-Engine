@@ -384,7 +384,7 @@ export default function App() {
                       <td>{new Date(item.timestamp * 1000).toLocaleString()}</td>
                       <td>{item.symbol}</td>
                       <td>
-                        <span className={"direction direction-" + item.bias.direction}>
+                        <span className={"direction direction-" + (item.bias?.direction ?? "NEUTRAL")}>
                           {item.bias?.direction ?? "LEGACY"} {item.bias?.strength ?? "—"}
                         </span>
                       </td>
