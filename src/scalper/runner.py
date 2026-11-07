@@ -5,6 +5,7 @@ import asyncio
 import json
 
 from .broker import Account, PrimeXBTBroker
+from .config import Settings
 from .engine import ScalperEngine
 from .journal import JsonlJournal
 from .local_config import LocalConfig
@@ -68,7 +69,7 @@ async def _run(command: str) -> None:
             )
             return
 
-        engine = ScalperEngine(broker)
+        engine = ScalperEngine(broker, Settings(timezone=cfg.timezone))
         if command == "scan":
             signal = await engine.scan(cfg.symbol)
             print(json.dumps(signal.to_dict(), indent=2))
