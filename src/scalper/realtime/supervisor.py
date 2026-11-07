@@ -70,6 +70,17 @@ class MarketSupervisor:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
 
+    async def select_strategy(self, strategy_id: str) -> tuple[dict[str, object], dict[str, Any]]:
+        self.engine.set_strategy(strategy_id)
+        self._last_manual_scan.pop(
+            f"{self.selected_symbol}:{self.engine.strategy_id}",
+            None,
+        )
+        payload = await self.scan_now(self.selected_symbol, source="strategy_change")
+        definition = self.engine.strategy.to_dict()
+        self.events.publish("strategy.changed", {"strategy": definition})
+        return definition, payload
+
     async def select_symbol(self, query: str) -> str:
         symbol = await self.broker.resolve_symbol(query)
         async with self._symbol_lock:
@@ -123,7 +134,8 @@ class MarketSupervisor:
     async def manual_scan(self, symbol: str | None = None) -> dict[str, Any]:
         selected = symbol or self.selected_symbol
         now_mono = monotonic()
-        previous = self._last_manual_scan.get(selected)
+        cache_key = f"{selected}:{self.engine.strategy_id}"
+        previous = self._last_manual_scan.get(cache_key)
         cached = self.latest_analysis.get(selected)
         if previous is not None and cached is not None:
             age = now_mono - previous
@@ -141,7 +153,7 @@ class MarketSupervisor:
                     },
                 }
                 return response
-        self._last_manual_scan[selected] = now_mono
+        self._last_manual_scan[cache_key] = now_mono
         return await self.scan_now(selected, source="manual")
 
     async def scan_now(
@@ -165,6 +177,8 @@ class MarketSupervisor:
                 "risk_guard_allowed": allowed,
                 "scan_source": source,
                 "scan_cached": False,
+                "strategy_id": self.engine.strategy_id,
+                "scanned_timeframes": ["1H", "15M", "5M", "1M"],
             }
             payload["market"] = {
                 "open": quote.market_open,
@@ -263,6 +277,7 @@ class MarketSupervisor:
         return {
             "status": "ok" if self.last_error is None else "degraded",
             "selected_symbol": self.selected_symbol,
+            "selected_strategy": self.engine.strategy_id,
             "started_at": self.started_at,
             "last_scan_at": self.last_scan_at,
             "last_scan_source": self.last_scan_source,
@@ -277,6 +292,7 @@ class MarketSupervisor:
             "quote": self._quote_payload(self.latest_quote) if self.latest_quote else None,
             "account": self.latest_account,
             "analysis": self.latest_analysis.get(self.selected_symbol),
+            "strategy": self.engine.strategy.to_dict(),
         }
 
     def _record_error(self, source: str, exc: Exception) -> None:

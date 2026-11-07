@@ -14,11 +14,12 @@ import type {
   Quote,
   SettingsPayload,
   SocketEvent,
+  StrategyDefinition,
   SymbolSearchResult,
   Timeframe
 } from "./types";
 
-type Page = "dashboard" | "markets" | "analysis" | "settings";
+type Page = "dashboard" | "markets" | "strategies" | "analysis" | "settings";
 
 const timeframes: Timeframe[] = ["1M", "5M", "15M", "1H"];
 
@@ -33,6 +34,9 @@ export default function App() {
   const [chart, setChart] = useState<ChartPayload | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>("5M");
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
+  const [strategies, setStrategies] = useState<StrategyDefinition[]>([]);
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyDefinition | null>(null);
+  const [strategyBusy, setStrategyBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<SymbolSearchResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,11 +67,13 @@ export default function App() {
   }, [dark]);
 
   useEffect(() => {
-    Promise.all([api.status(), api.settings()])
-      .then(([nextStatus, nextSettings]) => {
+    Promise.all([api.status(), api.settings(), api.strategies()])
+      .then(([nextStatus, nextSettings, strategyCatalog]) => {
         const selected = nextStatus.health.selected_symbol;
         setStatus(nextStatus);
         setSettings(nextSettings);
+        setStrategies(strategyCatalog.items);
+        setSelectedStrategy(strategyCatalog.selected);
         setSymbol(selected);
         setQuote(nextStatus.quote);
         setAnalysis(nextStatus.analysis);
@@ -103,6 +109,10 @@ export default function App() {
           void loadChart(symbol, timeframe);
         }
       }
+    }
+    if (event.type === "strategy.changed") {
+      const payload = event.data as { strategy: StrategyDefinition };
+      setSelectedStrategy(payload.strategy);
     }
     if (event.type === "settings.updated") {
       const runtime = event.data as SettingsPayload["runtime"];
@@ -160,6 +170,24 @@ export default function App() {
     }
   };
 
+  const selectStrategyMode = async (strategyId: string) => {
+    setStrategyBusy(strategyId);
+    setError(null);
+    try {
+      const response = await api.selectStrategy(strategyId);
+      setSelectedStrategy(response.selected);
+      setAnalysis(response.analysis);
+      setHistory((items) => prependAnalysis(items, response.analysis));
+      const nextSettings = await api.settings();
+      setSettings(nextSettings);
+      setPage("dashboard");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setStrategyBusy(null);
+    }
+  };
+
   const selectMarket = async (nextSymbol: string) => {
     try {
       const response = await api.selectSymbol(nextSymbol);
@@ -194,7 +222,7 @@ export default function App() {
         </button>
 
         <nav>
-          {(["dashboard", "markets", "analysis", "settings"] as Page[]).map((item) => (
+          {(["dashboard", "markets", "strategies", "analysis", "settings"] as Page[]).map((item) => (
             <button
               className={page === item ? "active" : ""}
               key={item}
@@ -237,6 +265,13 @@ export default function App() {
                   <span className={quote?.market_open ? "market-open" : "market-closed"}>
                     {marketState}
                   </span>
+                </div>
+                <div className="active-strategy-line">
+                  <span>Strategy</span>
+                  <button onClick={() => setPage("strategies")}>
+                    {selectedStrategy?.name ?? analysis?.strategy ?? "A+ Structure MTF"}
+                  </button>
+                  <small>Full scan: 1H · 15M · 5M · 1M</small>
                 </div>
               </div>
               <div className="market-numbers">
@@ -320,6 +355,65 @@ export default function App() {
               </section>
             </div>
           </>
+        )}
+
+        {page === "strategies" && (
+          <section className="page-section">
+            <PageHeading
+              eyebrow="Deterministic strategy catalog"
+              title="Strategies"
+              copy="Choose one analysis model before Run Scan. Every model evaluates 1H, 15M, 5M and 1M before the final decision."
+            />
+
+            <div className="strategy-research-note">
+              <strong>Research note</strong>
+              <span>
+                These are rule-based technical-analysis frameworks, not guaranteed profitable systems.
+                Each strategy needs its own backtest and demo forward-test.
+              </span>
+            </div>
+
+            <div className="strategy-card-grid">
+              {strategies.map((strategy) => {
+                const active = selectedStrategy?.strategy_id === strategy.strategy_id;
+                const busy = strategyBusy === strategy.strategy_id;
+                return (
+                  <article className={"panel strategy-card " + (active ? "strategy-card-active" : "")}
+                    key={strategy.strategy_id}>
+                    <div className="strategy-card-header">
+                      <div>
+                        <p className="eyebrow">{strategy.style}</p>
+                        <h2>{strategy.name}</h2>
+                      </div>
+                      <span className={active ? "strategy-active-badge" : "strategy-origin-badge"}>
+                        {active ? "ACTIVE" : strategy.origin}
+                      </span>
+                    </div>
+                    <p className="strategy-description">{strategy.description}</p>
+                    <div className="strategy-flow">
+                      {strategy.timeframes.map((tf, index) => (
+                        <span key={tf}>
+                          <b>{tf}</b>
+                          {index < strategy.timeframes.length - 1 && <i>→</i>}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="strategy-evidence">
+                      <strong>Basis</strong>
+                      <span>{strategy.evidence_note}</span>
+                    </div>
+                    <button
+                      className={active ? "secondary-button strategy-select" : "primary-button strategy-select"}
+                      disabled={active || strategyBusy !== null}
+                      onClick={() => void selectStrategyMode(strategy.strategy_id)}
+                    >
+                      {active ? "Selected" : busy ? "Switching" : "Use strategy"}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {page === "markets" && (
@@ -462,7 +556,9 @@ export default function App() {
                 </div>
               </section>
               <SettingsCard title="Strategy">
-                <Detail name="Model" value={settings?.strategy.name ?? "A_PLUS_SCALPER_V1"} />
+                <Detail name="Model" value={settings?.strategy.name ?? "A+ Structure MTF"} />
+                <Detail name="Strategy ID" value={settings?.strategy.strategy_id ?? "a_plus_structure"} />
+                <Detail name="Origin" value={settings?.strategy.origin ?? "Systematic multi-timeframe"} />
                 <Detail name="Engine" value={settings?.strategy.engine ?? "Deterministic rules"} />
                 <Detail name="LLM required" value={settings?.strategy.llm_required ? "Yes" : "No"} />
                 <Detail name="A+ threshold" value={String(settings?.strategy.score_threshold ?? 85)} />

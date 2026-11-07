@@ -2,6 +2,17 @@ export type Decision = "NO_TRADE" | "WATCH" | "TRADE_CANDIDATE";
 export type Direction = "LONG" | "SHORT" | "NEUTRAL";
 export type Timeframe = "1M" | "5M" | "15M" | "30M" | "1H" | "4H" | "1D";
 
+export interface StrategyDefinition {
+  strategy_id: string;
+  code: string;
+  name: string;
+  origin: string;
+  style: string;
+  description: string;
+  timeframes: string[];
+  evidence_note: string;
+}
+
 export interface Quote {
   symbol: string;
   bid: number;
@@ -85,6 +96,8 @@ export interface Analysis {
     scan_source?: string;
     scan_cached?: boolean;
     scan_cooldown_remaining?: number;
+    strategy_id?: string;
+    scanned_timeframes?: string[];
   };
 }
 
@@ -112,6 +125,7 @@ export interface AppStatus {
   health: {
     status: string;
     selected_symbol: string;
+    selected_strategy?: string;
     last_scan_at: number | null;
     last_scan_source?: string | null;
     last_error: string | null;
@@ -120,6 +134,7 @@ export interface AppStatus {
   };
   quote: Quote | null;
   analysis: Analysis | null;
+  strategy?: StrategyDefinition;
 }
 
 export interface SettingsPayload {
@@ -129,12 +144,10 @@ export interface SettingsPayload {
     account_poll_seconds: number;
     max_daily_drawdown_pct: number;
   };
-  strategy: {
-    name: string;
+  strategy: StrategyDefinition & {
     engine: string;
     llm_required: boolean;
     score_threshold: number;
-    timeframes: string[];
   };
   safety: { require_demo: boolean; live_execution: boolean };
 }

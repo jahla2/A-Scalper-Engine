@@ -5,170 +5,189 @@ from time import time
 
 from .broker import PrimeXBTBroker
 from .config import Settings
-from .models import (
-    Decision,
-    Direction,
-    ExecutionSignal,
-    Setup,
-    Signal,
-    StructureSignal,
-)
+from .models import Decision, Direction, Signal
 from .risk import make_trade_plan, opposing_level, structural_stop
-from .strategy import execution, market_bias, regime, score_setup, setup
-from .structure import recent_bos
+from .strategy import score_setup
+from .strategy_catalog import DEFAULT_STRATEGY, get_strategy
+from .strategy_modes import evaluate_strategy
 from .timeframes import closed_bars
 
 
 class ScalperEngine:
-    def __init__(self, broker: PrimeXBTBroker, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        broker: PrimeXBTBroker,
+        settings: Settings | None = None,
+        *,
+        strategy_id: str = DEFAULT_STRATEGY,
+    ) -> None:
         self.broker = broker
         self.settings = settings or Settings()
+        self.strategy_id = get_strategy(strategy_id).strategy_id
+
+    @property
+    def strategy(self):
+        return get_strategy(self.strategy_id)
+
+    def set_strategy(self, strategy_id: str) -> None:
+        self.strategy_id = get_strategy(strategy_id).strategy_id
 
     async def scan(self, requested_symbol: str, now: int | None = None) -> Signal:
         now = int(time()) if now is None else now
         symbol = await self.broker.resolve_symbol(requested_symbol)
         info = await self.broker.symbol_info(symbol)
-        bars_1h_raw, bars_15m_raw, bars_5m_raw, quote, snapshot = await asyncio.gather(
+
+        (
+            bars_1h_raw,
+            bars_15m_raw,
+            bars_5m_raw,
+            bars_1m_raw,
+            quote,
+            account_snapshot,
+        ) = await asyncio.gather(
             self.broker.bars(symbol, "1H", self.settings.bars_1h),
             self.broker.bars(symbol, "15M", self.settings.bars_15m),
             self.broker.bars(symbol, "5M", self.settings.bars_5m),
+            self.broker.bars(symbol, "1M", self.settings.bars_1m),
             self.broker.quote(symbol),
             self.broker.snapshot(),
         )
+
         bars_1h = closed_bars(bars_1h_raw, "1H", now)
         bars_15m = closed_bars(bars_15m_raw, "15M", now)
         bars_5m = closed_bars(bars_5m_raw, "5M", now)
-
-        empty_setup = Setup(False, False, False, 0.0, 0.0, None, "not evaluated")
-        empty_structure = StructureSignal(
-            Direction.NEUTRAL, False, None, None, None, False, False, 0.0, "not evaluated"
-        )
-        empty_execution = ExecutionSignal(False, False, "UNKNOWN")
-        reg = regime(bars_1h, self.settings)
-        bias = market_bias(bars_1h, self.settings)
-        if reg.direction == Direction.NEUTRAL:
-            return Signal(
-                "A_PLUS_SCALPER_V1", symbol, now, Decision.NO_TRADE, reg.direction,
-                bias,
-                score_setup(
-                    reg,
-                    empty_setup,
-                    empty_structure,
-                    empty_execution,
-                    False,
-                    now,
-                    self.settings,
-                ),
-                reg, empty_setup, empty_structure, empty_execution, None,
-                (
-                    "Strict 1H regime is neutral; trend and swing structure are not fully aligned.",
-                    f"Directional alignment currently leans {bias.direction.value} "
-                    f"({bias.strength}/100 rule alignment).",
-                ),
-            )
-
-        stp = setup(bars_15m, reg.direction, self.settings)
-        if not stp.valid:
-            return Signal(
-                "A_PLUS_SCALPER_V1", symbol, now, Decision.NO_TRADE, reg.direction,
-                bias,
-                score_setup(
-                    reg,
-                    stp,
-                    empty_structure,
-                    empty_execution,
-                    False,
-                    now,
-                    self.settings,
-                ),
-                reg, stp, empty_structure, empty_execution, None,
-                (stp.reason,),
-            )
-
-        structure = recent_bos(bars_5m, reg.direction, info.min_price_step, self.settings.structure)
-        if not structure.bos:
-            return Signal(
-                "A_PLUS_SCALPER_V1", symbol, now, Decision.WATCH, reg.direction,
-                bias,
-                score_setup(
-                    reg,
-                    stp,
-                    structure,
-                    empty_execution,
-                    False,
-                    now,
-                    self.settings,
-                ),
-                reg, stp, structure, empty_execution, None,
-                ("setup valid; waiting for confirmed 5M BOS",),
-            )
-
-        bars_1m_raw = await self.broker.bars(symbol, "1M", self.settings.bars_1m)
         bars_1m = closed_bars(bars_1m_raw, "1M", now)
-        exe = execution(bars_1m, reg.direction, info.min_price_step, self.settings)
 
-        entry = quote.ask if reg.direction == Direction.LONG else quote.bid
-        stop = structural_stop(
-            bars_5m, reg.direction, structure.atr, self.settings.risk, self.settings.structure
+        evaluated = evaluate_strategy(
+            self.strategy_id,
+            bars_1h,
+            bars_15m,
+            bars_5m,
+            bars_1m,
+            info.min_price_step,
+            self.settings,
         )
-        obstacle = opposing_level(bars_15m, reg.direction, entry, self.settings.structure)
-        equity = float(snapshot.get("equity", 0.0))
-        entry_reason = (
-            "Current ask after confirmed 5M BOS; 1M execution is confirmed."
-            if reg.direction == Direction.LONG and exe.confirmed
-            else "Current bid after confirmed 5M BOS; 1M execution is confirmed."
-            if reg.direction == Direction.SHORT and exe.confirmed
-            else "Current executable quote after 5M BOS; waiting for 1M execution confirmation."
-        )
-        plan = None if stop is None else make_trade_plan(
-            reg.direction,
-            entry,
-            stop,
-            equity,
-            self.settings.risk,
-            obstacle,
-            status="READY" if exe.confirmed else "PROVISIONAL",
-            entry_reason=entry_reason,
-        )
+        reg = evaluated.regime
+        bias = evaluated.bias
+        stp = evaluated.setup
+        structure = evaluated.structure
+        exe = evaluated.execution
+
+        plan = None
+        if reg.direction != Direction.NEUTRAL and structure.bos:
+            entry = quote.ask if reg.direction == Direction.LONG else quote.bid
+            stop = structural_stop(
+                bars_5m,
+                reg.direction,
+                structure.atr,
+                self.settings.risk,
+                self.settings.structure,
+            )
+            obstacle = opposing_level(
+                bars_15m,
+                reg.direction,
+                entry,
+                self.settings.structure,
+            )
+            equity = float(account_snapshot.get("equity", 0.0))
+            execution_ready = (
+                stp.valid
+                and structure.displacement
+                and structure.retest
+                and exe.confirmed
+            )
+            if stop is not None:
+                plan = make_trade_plan(
+                    reg.direction,
+                    entry,
+                    stop,
+                    equity,
+                    self.settings.risk,
+                    obstacle,
+                    status="READY" if execution_ready else "PROVISIONAL",
+                    entry_reason=(
+                        f"Current {'ask' if reg.direction == Direction.LONG else 'bid'} "
+                        f"after {self.strategy.name} produced a confirmed 5M BOS; "
+                        + (
+                            "1M execution is confirmed."
+                            if exe.confirmed
+                            else "1M execution confirmation is still pending."
+                        )
+                    ),
+                )
+
         rr_ok = plan is not None
-        score = score_setup(reg, stp, structure, exe, rr_ok, now, self.settings)
+        score = score_setup(
+            reg,
+            stp,
+            structure,
+            exe,
+            rr_ok,
+            now,
+            self.settings,
+        )
 
         spread_ok = structure.atr > 0 and (
             quote.spread / structure.atr <= self.settings.risk.max_spread_atr_ratio
         )
-        reasons: list[str] = []
-        if not quote.market_open:
-            reasons.append("market is closed")
-        if not spread_ok:
-            reasons.append("spread is too large relative to 5M ATR")
-        if plan is None:
-            reasons.append("minimum reward-to-risk is not available")
-        if not structure.displacement:
-            reasons.append("BOS lacks displacement")
-        if not structure.retest:
-            reasons.append("BOS retest not confirmed")
+        reasons: list[str] = list(evaluated.notes)
+
+        if reg.direction == Direction.NEUTRAL:
+            reasons.append(
+                "1H strict regime is neutral, so no trade can qualify yet; "
+                "15M, 5M and 1M were still evaluated for diagnostics."
+            )
+        if not stp.valid:
+            reasons.append(f"15M setup is not valid: {stp.reason}.")
+        if not structure.bos:
+            reasons.append(f"5M confirmation is not ready: {structure.reason}.")
+        elif not structure.displacement:
+            reasons.append("5M BOS exists but displacement is not confirmed.")
+        elif not structure.retest:
+            reasons.append("5M BOS exists but retest is not confirmed.")
         if not exe.confirmed:
-            reasons.append("1M execution confirmation is not ready")
+            reasons.append(
+                f"1M execution is not confirmed; current micro structure is {exe.structure}."
+            )
+        if not quote.market_open:
+            reasons.append("Market is closed.")
+        if not spread_ok:
+            reasons.append("Spread is too large relative to 5M ATR.")
+        if reg.direction != Direction.NEUTRAL and structure.bos and plan is None:
+            reasons.append(
+                "No valid structural trade plan: stop/target geometry cannot satisfy minimum RR."
+            )
 
         candidate = (
-            quote.market_open
-            and spread_ok
-            and plan is not None
+            reg.direction != Direction.NEUTRAL
+            and stp.valid
+            and structure.bos
             and structure.displacement
             and structure.retest
             and exe.confirmed
+            and quote.market_open
+            and spread_ok
+            and plan is not None
             and score.total >= score.threshold
         )
-        decision = Decision.TRADE_CANDIDATE if candidate else Decision.WATCH
+
         if candidate:
+            decision = Decision.TRADE_CANDIDATE
             reasons.append(
-                "A+ threshold reached with displacement, retest, and 1M execution confirmation"
+                "All selected-strategy stages and A+ safety gates are aligned."
             )
-        elif not reasons:
-            reasons.append("score below A+ threshold")
+        elif reg.direction == Direction.NEUTRAL or not stp.valid:
+            decision = Decision.NO_TRADE
+        else:
+            decision = Decision.WATCH
+
+        if not candidate and score.total < score.threshold:
+            reasons.append(
+                f"Setup score is {score.total}/{score.threshold}; threshold not reached."
+            )
 
         return Signal(
-            "A_PLUS_SCALPER_V1",
+            self.strategy.code,
             symbol,
             now,
             decision,
@@ -180,7 +199,7 @@ class ScalperEngine:
             structure,
             exe,
             plan,
-            tuple(reasons),
+            tuple(dict.fromkeys(reasons)),
         )
 
     async def preview(self, signal: Signal, qty: float) -> dict:
