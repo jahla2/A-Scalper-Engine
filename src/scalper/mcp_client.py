@@ -94,7 +94,7 @@ class PrimeXbtMcpToolCaller:
         self._client: Client | None = None
         self._tool_names: set[str] = set()
 
-    async def __aenter__(self) -> "PrimeXbtMcpToolCaller":
+    async def __aenter__(self) -> PrimeXbtMcpToolCaller:
         oauth = OAuthClientProvider(
             server_url=self.server_url,
             client_metadata=OAuthClientMetadata(

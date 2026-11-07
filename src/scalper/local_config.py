@@ -14,7 +14,9 @@ def load_env_file(path: str | Path = ".env") -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +30,7 @@ class LocalConfig:
     journal_file: Path
 
     @classmethod
-    def from_env(cls) -> "LocalConfig":
+    def from_env(cls) -> LocalConfig:
         load_env_file()
         poll = float(os.getenv("SCALPER_POLL_SECONDS", "2.0"))
         drawdown = float(os.getenv("SCALPER_MAX_DAILY_DRAWDOWN_PCT", "2.0"))
@@ -42,6 +44,10 @@ class LocalConfig:
             account_id=os.getenv("PRIMEXBT_ACCOUNT_ID") or None,
             poll_seconds=poll,
             max_daily_drawdown_pct=drawdown,
-            oauth_file=Path(os.getenv("SCALPER_OAUTH_FILE", ".scalper/primexbt_oauth.json")),
-            journal_file=Path(os.getenv("SCALPER_JOURNAL_FILE", "logs/signals.jsonl")),
+            oauth_file=Path(
+                os.getenv("SCALPER_OAUTH_FILE", ".scalper/primexbt_oauth.json")
+            ),
+            journal_file=Path(
+                os.getenv("SCALPER_JOURNAL_FILE", "logs/signals.jsonl")
+            ),
         )
