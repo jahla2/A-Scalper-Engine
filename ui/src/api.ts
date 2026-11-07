@@ -3,6 +3,7 @@ import type {
   AppStatus,
   ChartPayload,
   SettingsPayload,
+  StrategyDefinition,
   SymbolSearchResult,
   Timeframe
 } from "./types";
@@ -22,6 +23,13 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   status: () => request<AppStatus>("/api/status"),
   settings: () => request<SettingsPayload>("/api/settings"),
+  strategies: () =>
+    request<{ selected: StrategyDefinition; items: StrategyDefinition[] }>("/api/strategies"),
+  selectStrategy: (strategyId: string) =>
+    request<{ selected: StrategyDefinition; analysis: Analysis }>("/api/strategy/select", {
+      method: "POST",
+      body: JSON.stringify({ strategy_id: strategyId })
+    }),
   updateRuntime: (runtime: SettingsPayload["runtime"]) =>
     request<{ runtime: SettingsPayload["runtime"] }>("/api/settings/runtime", {
       method: "PATCH",
