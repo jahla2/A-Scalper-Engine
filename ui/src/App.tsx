@@ -97,7 +97,7 @@ export default function App() {
       const next = event.data as Analysis;
       if (next.symbol === symbol) {
         setAnalysis(next);
-        setHistory((items) => [next, ...items].slice(0, 100));
+        setHistory((items) => prependAnalysis(items, next));
         if (next.runtime?.scan_source === "candle_close") {
           void loadChart(symbol, timeframe);
         }
@@ -126,7 +126,7 @@ export default function App() {
       const next = await api.scan(symbol);
       setAnalysis(next);
       if (!next.runtime?.scan_cached) {
-        setHistory((items) => [next, ...items].slice(0, 100));
+        setHistory((items) => prependAnalysis(items, next));
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -297,11 +297,11 @@ export default function App() {
                   <Detail name="Strategy" value={analysis?.strategy ?? "A_PLUS_SCALPER_V1"} />
                   <Detail
                     name="Directional bias"
-                    value={analysis ? analysis.bias.direction + " · " + analysis.bias.strength + "/100" : "—"}
+                    value={analysis?.bias ? analysis.bias.direction + " · " + analysis.bias.strength + "/100" : "—"}
                   />
                   <Detail
                     name="Long / Short alignment"
-                    value={analysis ? analysis.bias.long_alignment + " / " + analysis.bias.short_alignment : "—"}
+                    value={analysis?.bias ? analysis.bias.long_alignment + " / " + analysis.bias.short_alignment : "—"}
                   />
                   <Detail name="1H structure" value={analysis?.regime.structure ?? "—"} />
                   <Detail name="5M BOS" value={analysis?.structure.bos ? "Confirmed" : "No"} />
@@ -385,7 +385,7 @@ export default function App() {
                       <td>{item.symbol}</td>
                       <td>
                         <span className={"direction direction-" + item.bias.direction}>
-                          {item.bias.direction} {item.bias.strength}
+                          {item.bias?.direction ?? "LEGACY"} {item.bias?.strength ?? "—"}
                         </span>
                       </td>
                       <td>{item.direction}</td>
@@ -460,6 +460,9 @@ export default function App() {
                 </div>
               </section>
               <SettingsCard title="Strategy">
+                <Detail name="Model" value={settings?.strategy.name ?? "A_PLUS_SCALPER_V1"} />
+                <Detail name="Engine" value={settings?.strategy.engine ?? "Deterministic rules"} />
+                <Detail name="LLM required" value={settings?.strategy.llm_required ? "Yes" : "No"} />
                 <Detail name="A+ threshold" value={String(settings?.strategy.score_threshold ?? 85)} />
                 <Detail name="Timeframes" value={settings?.strategy.timeframes.join(" · ") ?? "—"} />
                 <Detail name="Execution" value="Analysis only" />
@@ -576,4 +579,13 @@ function scanStatus(analysis: Analysis | null) {
   }
   const source = (analysis.runtime?.scan_source ?? "scan").replaceAll("_", " ");
   return "Last " + source + " · " + time;
+}
+
+
+function prependAnalysis(items: Analysis[], next: Analysis) {
+  const duplicate = items.some(
+    (item) => item.symbol === next.symbol && item.timestamp === next.timestamp
+  );
+  if (duplicate) return items;
+  return [next, ...items].slice(0, 100);
 }

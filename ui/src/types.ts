@@ -27,7 +27,7 @@ export interface Analysis {
   timestamp: number;
   decision: Decision;
   direction: Direction;
-  bias: MarketBias;
+  bias?: MarketBias;
   score: { total: number; threshold: number; parts: Record<string, number> };
   regime: {
     direction: Direction;
@@ -116,7 +116,13 @@ export interface SettingsPayload {
     account_poll_seconds: number;
     max_daily_drawdown_pct: number;
   };
-  strategy: { score_threshold: number; timeframes: string[] };
+  strategy: {
+    name: string;
+    engine: string;
+    llm_required: boolean;
+    score_threshold: number;
+    timeframes: string[];
+  };
   safety: { require_demo: boolean; live_execution: boolean };
 }
 

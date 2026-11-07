@@ -9,8 +9,8 @@ export function TimeframeGrid(props: { analysis: Analysis | null }) {
       title: "Strict regime",
       value: item?.regime.direction ?? "NEUTRAL",
       detail: item
-        ? "Bias " + item.bias.direction + " " + item.bias.strength +
-          " · Structure " + item.regime.structure
+        ? "Bias " + (item.bias?.direction ?? "UNKNOWN") + " " +
+          (item.bias?.strength ?? 0) + " · Structure " + item.regime.structure
         : "Waiting"
     },
     {
