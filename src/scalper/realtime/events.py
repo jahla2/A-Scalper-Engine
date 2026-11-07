@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from typing import Any
 
 
@@ -21,14 +22,10 @@ class EventBus:
         event = {"type": event_type, "data": data}
         for queue in tuple(self._subscribers):
             if queue.full():
-                try:
+                with suppress(asyncio.QueueEmpty):
                     queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
-            try:
+            with suppress(asyncio.QueueFull):
                 queue.put_nowait(event)
-            except asyncio.QueueFull:
-                pass
 
     @property
     def subscriber_count(self) -> int:
