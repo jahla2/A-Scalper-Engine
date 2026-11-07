@@ -28,6 +28,7 @@ def test_local_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
         "SCALPER_SYMBOL",
         "PRIMEXBT_ACCOUNT_ID",
         "SCALPER_REQUIRE_DEMO",
+        "SCALPER_TIMEZONE",
         "SCALPER_POLL_SECONDS",
         "SCALPER_MAX_DAILY_DRAWDOWN_PCT",
         "SCALPER_OAUTH_FILE",
@@ -39,6 +40,7 @@ def test_local_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.symbol == "XAU/USD"
     assert config.require_demo is True
     assert config.poll_seconds == 2.0
+    assert config.timezone == "Asia/Manila"
 
 
 def test_poll_interval_cannot_be_too_fast(monkeypatch: pytest.MonkeyPatch) -> None:

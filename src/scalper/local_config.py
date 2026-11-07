@@ -46,6 +46,7 @@ class LocalConfig:
     api_host: str
     api_port: int
     ui_origin: str
+    timezone: str
 
     @classmethod
     def from_env(cls) -> LocalConfig:
@@ -90,4 +91,5 @@ class LocalConfig:
             api_host=os.getenv("SCALPER_API_HOST", "127.0.0.1"),
             api_port=api_port,
             ui_origin=os.getenv("SCALPER_UI_ORIGIN", "http://localhost:5173"),
+            timezone=os.getenv("SCALPER_TIMEZONE", "Asia/Manila"),
         )

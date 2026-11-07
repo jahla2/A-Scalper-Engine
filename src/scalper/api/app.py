@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from ..broker import PrimeXBTBroker
+from ..config import Settings
 from ..engine import ScalperEngine
 from ..local_config import LocalConfig
 from ..mcp_client import PrimeXbtMcpToolCaller
@@ -57,7 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 f"Web dashboard requires a Demo account; connected to {account.account_id}"
             )
         broker = CachedBroker(raw_broker)
-        engine = ScalperEngine(broker)
+        engine = ScalperEngine(broker, Settings(timezone=config.timezone))
         store = AnalysisStore(config.database_file)
         await store.initialize()
         events = EventBus()
