@@ -18,12 +18,17 @@ from ..realtime.cache import CachedBroker
 from ..realtime.events import EventBus
 from ..realtime.storage import AnalysisStore
 from ..realtime.supervisor import MarketSupervisor
+from ..strategy_catalog import list_strategies
 from .context import AppContext
 from .serializers import chart_payload
 
 
 class SymbolRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=80)
+
+
+class StrategyRequest(BaseModel):
+    strategy_id: str = Field(min_length=1, max_length=80)
 
 
 class RuntimeSettingsRequest(BaseModel):
@@ -152,6 +157,29 @@ async def select_market(request: Request, body: SymbolRequest) -> dict[str, Any]
     return {"symbol": symbol}
 
 
+@app.get("/api/strategies")
+async def strategies(request: Request) -> dict[str, Any]:
+    context = _context(request)
+    return {
+        "selected": context.engine.strategy.to_dict(),
+        "items": list_strategies(),
+    }
+
+
+@app.post("/api/strategy/select")
+async def select_strategy(
+    request: Request,
+    body: StrategyRequest,
+) -> dict[str, Any]:
+    try:
+        selected, analysis = await _context(request).supervisor.select_strategy(
+            body.strategy_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"selected": selected, "analysis": analysis}
+
+
 @app.get("/api/market/quote")
 async def quote(request: Request, symbol: str | None = None) -> dict[str, Any]:
     context = _context(request)
@@ -232,11 +260,10 @@ async def settings(request: Request) -> dict[str, Any]:
     return {
         "runtime": context.supervisor.runtime_settings(),
         "strategy": {
-            "name": "A_PLUS_SCALPER_V1",
+            **context.engine.strategy.to_dict(),
             "engine": "deterministic_rules",
             "llm_required": False,
-            "score_threshold": 85,
-            "timeframes": ["1M", "5M", "15M", "1H"],
+            "score_threshold": context.engine.settings.score.threshold,
         },
         "safety": {
             "require_demo": config.require_demo,
