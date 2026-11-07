@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import json
 
-from .broker import PrimeXBTBroker
+from .broker import Account, PrimeXBTBroker
 from .engine import ScalperEngine
 from .journal import JsonlJournal
 from .local_config import LocalConfig
@@ -24,6 +24,15 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def require_demo_account(account: Account, required: bool) -> None:
+    if required and not account.demo:
+        raise RuntimeError(
+            "Demo account required, but PrimeXBT OAuth is connected to "
+            f"{account.account_id}. Open PXTrader 2.0, select a Demo account, "
+            "remove .scalper/primexbt_oauth.json, then run 'aplus connect' again."
+        )
+
+
 async def _run(command: str) -> None:
     cfg = LocalConfig.from_env()
     async with PrimeXbtMcpToolCaller(cfg.mcp_url, cfg.oauth_file) as caller:
@@ -32,8 +41,10 @@ async def _run(command: str) -> None:
             account_id=cfg.account_id,
             allow_live_execution=False,
         )
+        account = await broker.account()
+        require_demo_account(account, cfg.require_demo)
+
         if command == "connect":
-            account = await broker.account()
             symbol = await broker.resolve_symbol(cfg.symbol)
             info = await broker.symbol_info(symbol)
             quote = await broker.quote(symbol)
