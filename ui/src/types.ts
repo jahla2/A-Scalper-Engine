@@ -58,11 +58,24 @@ export interface Analysis {
   };
   execution: { confirmed: boolean; micro_bos: boolean; structure: string };
   trade: {
+    status: string;
     entry: number;
     stop_loss: number;
     take_profit: number;
+    tp1: number;
+    tp2: number;
+    tp3: number;
     rr: number;
+    rr1: number;
+    rr2: number;
+    rr3: number;
     risk_budget: number;
+    obstacle: number | null;
+    entry_reason: string;
+    stop_reason: string;
+    tp1_reason: string;
+    tp2_reason: string;
+    tp3_reason: string;
   } | null;
   reasons: string[];
   runtime?: {

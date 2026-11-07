@@ -113,8 +113,22 @@ class ScalperEngine:
         )
         obstacle = opposing_level(bars_15m, reg.direction, entry, self.settings.structure)
         equity = float(snapshot.get("equity", 0.0))
+        entry_reason = (
+            "Current ask after confirmed 5M BOS; 1M execution is confirmed."
+            if reg.direction == Direction.LONG and exe.confirmed
+            else "Current bid after confirmed 5M BOS; 1M execution is confirmed."
+            if reg.direction == Direction.SHORT and exe.confirmed
+            else "Current executable quote after 5M BOS; waiting for 1M execution confirmation."
+        )
         plan = None if stop is None else make_trade_plan(
-            reg.direction, entry, stop, equity, self.settings.risk, obstacle
+            reg.direction,
+            entry,
+            stop,
+            equity,
+            self.settings.risk,
+            obstacle,
+            status="READY" if exe.confirmed else "PROVISIONAL",
+            entry_reason=entry_reason,
         )
         rr_ok = plan is not None
         score = score_setup(reg, stp, structure, exe, rr_ok, now, self.settings)
@@ -133,16 +147,23 @@ class ScalperEngine:
             reasons.append("BOS lacks displacement")
         if not structure.retest:
             reasons.append("BOS retest not confirmed")
+        if not exe.confirmed:
+            reasons.append("1M execution confirmation is not ready")
 
         candidate = (
             quote.market_open
             and spread_ok
             and plan is not None
+            and structure.displacement
+            and structure.retest
+            and exe.confirmed
             and score.total >= score.threshold
         )
         decision = Decision.TRADE_CANDIDATE if candidate else Decision.WATCH
         if candidate:
-            reasons.append("A+ threshold reached")
+            reasons.append(
+                "A+ threshold reached with displacement, retest, and 1M execution confirmation"
+            )
         elif not reasons:
             reasons.append("score below A+ threshold")
 

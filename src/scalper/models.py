@@ -95,11 +95,24 @@ class ExecutionSignal:
 
 @dataclass(frozen=True, slots=True)
 class TradePlan:
+    status: str
     entry: float
     stop_loss: float
     take_profit: float
+    tp1: float
+    tp2: float
+    tp3: float
     rr: float
+    rr1: float
+    rr2: float
+    rr3: float
     risk_budget: float
+    obstacle: float | None
+    entry_reason: str
+    stop_reason: str
+    tp1_reason: str
+    tp2_reason: str
+    tp3_reason: str
 
 
 @dataclass(frozen=True, slots=True)

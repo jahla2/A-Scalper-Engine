@@ -2,20 +2,27 @@ import { useEffect, useRef } from "react";
 import {
   ColorType,
   CrosshairMode,
+  LineStyle,
   createChart,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type UTCTimestamp
 } from "lightweight-charts";
-import type { ChartPayload } from "../types";
+import type { Analysis, ChartPayload } from "../types";
 
-export function MarketChart(props: { data: ChartPayload | null; dark: boolean }) {
+export function MarketChart(props: {
+  data: ChartPayload | null;
+  analysis: Analysis | null;
+  dark: boolean;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const candles = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const ema50 = useRef<ISeriesApi<"Line"> | null>(null);
   const ema200 = useRef<ISeriesApi<"Line"> | null>(null);
   const vwap = useRef<ISeriesApi<"Line"> | null>(null);
+  const tradeLines = useRef<IPriceLine[]>([]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -61,6 +68,7 @@ export function MarketChart(props: { data: ChartPayload | null; dark: boolean })
     return () => {
       value.remove();
       chart.current = null;
+      tradeLines.current = [];
     };
   }, [props.dark]);
 
@@ -95,6 +103,38 @@ export function MarketChart(props: { data: ChartPayload | null; dark: boolean })
     );
     chart.current?.timeScale().fitContent();
   }, [props.data]);
+
+  useEffect(() => {
+    const series = candles.current;
+    if (!series) return;
+
+    for (const line of tradeLines.current) {
+      series.removePriceLine(line);
+    }
+    tradeLines.current = [];
+
+    const plan = props.analysis?.trade;
+    if (!plan) return;
+
+    const specs = [
+      { price: plan.entry, title: "ENTRY", color: "#6172f3", width: 2 as const },
+      { price: plan.stop_loss, title: "SL", color: "#f04438", width: 2 as const },
+      { price: plan.tp1, title: "TP1", color: "#47cd89", width: 1 as const },
+      { price: plan.tp2, title: "TP2", color: "#17b26a", width: 1 as const },
+      { price: plan.tp3, title: "TP3", color: "#079455", width: 2 as const }
+    ];
+
+    tradeLines.current = specs.map((spec) =>
+      series.createPriceLine({
+        price: spec.price,
+        color: spec.color,
+        lineWidth: spec.width,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: spec.title
+      })
+    );
+  }, [props.analysis?.trade]);
 
   return <div className="chart-host" ref={host} />;
 }

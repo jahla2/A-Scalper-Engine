@@ -5,6 +5,7 @@ import { AnalysisLog } from "./components/AnalysisLog";
 import { MarketChart } from "./components/MarketChart";
 import { ScorePanel } from "./components/ScorePanel";
 import { TimeframeGrid } from "./components/TimeframeGrid";
+import { TradePlanCard } from "./components/TradePlanCard";
 import { useRealtime } from "./hooks/useRealtime";
 import type {
   Analysis,
@@ -269,7 +270,7 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-                <MarketChart data={chart} dark={dark} />
+                <MarketChart data={chart} analysis={analysis} dark={dark} />
                 <div className="chart-legend">
                   <span><i className="ema50" />EMA50</span>
                   <span><i className="ema200" />EMA200</span>
@@ -281,6 +282,7 @@ export default function App() {
             </div>
 
             <TimeframeGrid analysis={analysis} />
+            <TradePlanCard analysis={analysis} />
 
             <div className="lower-grid">
               <AnalysisLog items={history} />
