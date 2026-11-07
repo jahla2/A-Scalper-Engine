@@ -17,7 +17,7 @@ from .structure import classify_structure, find_swings, recent_bos
 
 def regime(bars: list[Bar], settings: Settings) -> Regime:
     cfg = settings.indicators
-    closes = [b.c for b in bars]
+    closes = [b.close for b in bars]
     if len(closes) < cfg.ema_slow + cfg.ema_slope_bars + 1:
         close = closes[-1] if closes else 0.0
         return Regime(Direction.NEUTRAL, close, 0.0, 0.0, "UNKNOWN", False)
@@ -44,7 +44,7 @@ def regime(bars: list[Bar], settings: Settings) -> Regime:
 def setup(bars: list[Bar], direction: Direction, settings: Settings) -> Setup:
     if not bars or direction == Direction.NEUTRAL:
         return Setup(False, False, False, 0.0, 0.0, None, "neutral regime")
-    closes = [b.c for b in bars]
+    closes = [b.close for b in bars]
     fast = ema(closes, settings.indicators.ema_fast)[-1]
     current_atr = atr(bars, settings.indicators.atr_period)[-1]
     vwap = session_vwap(bars, settings.timezone)

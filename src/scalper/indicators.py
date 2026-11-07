@@ -30,17 +30,17 @@ def ema(values: list[float], period: int) -> list[float]:
 def true_ranges(bars: list[Bar]) -> list[float]:
     if not bars:
         return []
-    result = [bars[0].h - bars[0].l]
-    previous_close = bars[0].c
+    result = [bars[0].high - bars[0].low]
+    previous_close = bars[0].close
     for bar in bars[1:]:
         result.append(
             max(
-                bar.h - bar.l,
-                abs(bar.h - previous_close),
-                abs(bar.l - previous_close),
+                bar.high - bar.low,
+                abs(bar.high - previous_close),
+                abs(bar.low - previous_close),
             )
         )
-        previous_close = bar.c
+        previous_close = bar.close
     return result
 
 
@@ -77,12 +77,12 @@ def session_vwap(bars: list[Bar], timezone: str = "Asia/Manila") -> float:
     for bar in reversed(bars):
         if datetime.fromtimestamp(bar.t, zone).date() != latest_day:
             break
-        typical = (bar.h + bar.l + bar.c) / 3.0
+        typical = (bar.high + bar.low + bar.close) / 3.0
         fallback_sum += typical
         fallback_count += 1
-        if bar.v > 0:
-            weighted += typical * bar.v
-            volume += bar.v
+        if bar.volume > 0:
+            weighted += typical * bar.volume
+            volume += bar.volume
     if volume > 0:
         return weighted / volume
     return fallback_sum / max(1, fallback_count)

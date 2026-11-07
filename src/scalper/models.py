@@ -20,19 +20,19 @@ class Decision(StrEnum):
 @dataclass(frozen=True, slots=True)
 class Bar:
     t: int
-    o: float
-    h: float
-    l: float
-    c: float
-    v: float = 0.0
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float = 0.0
 
     @property
     def body(self) -> float:
-        return abs(self.c - self.o)
+        return abs(self.close - self.open)
 
     @property
     def range(self) -> float:
-        return max(0.0, self.h - self.l)
+        return max(0.0, self.high - self.low)
 
 
 @dataclass(frozen=True, slots=True)

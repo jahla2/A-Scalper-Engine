@@ -3,8 +3,8 @@ from scalper.models import Bar, Direction, Swing
 from scalper.structure import classify_structure, find_swings, recent_bos
 
 
-def make_bar(i: int, o: float, h: float, l: float, c: float) -> Bar:
-    return Bar(i * 300, o, h, l, c, 100)
+def make_bar(i: int, open_: float, high: float, low: float, close: float) -> Bar:
+    return Bar(i * 300, open_, high, low, close, 100)
 
 
 def test_classify_hh_hl() -> None:

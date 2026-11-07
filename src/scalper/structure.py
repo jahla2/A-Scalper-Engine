@@ -10,14 +10,14 @@ def find_swings(bars: list[Bar], left: int = 2, right: int = 2) -> list[Swing]:
         raise ValueError("left and right must be positive")
     swings: list[Swing] = []
     for i in range(left, len(bars) - right):
-        high = bars[i].h
-        low = bars[i].l
-        if all(high > bars[j].h for j in range(i - left, i)) and all(
-            high > bars[j].h for j in range(i + 1, i + right + 1)
+        high = bars[i].high
+        low = bars[i].low
+        if all(high > bars[j].high for j in range(i - left, i)) and all(
+            high > bars[j].high for j in range(i + 1, i + right + 1)
         ):
             swings.append(Swing(i, high, "HIGH"))
-        if all(low < bars[j].l for j in range(i - left, i)) and all(
-            low < bars[j].l for j in range(i + 1, i + right + 1)
+        if all(low < bars[j].low for j in range(i - left, i)) and all(
+            low < bars[j].low for j in range(i + 1, i + right + 1)
         ):
             swings.append(Swing(i, low, "LOW"))
     return swings
@@ -86,9 +86,9 @@ def recent_bos(
         buffer = max(min_tick * config.bos_min_ticks, atrs[i] * config.bos_atr_buffer)
         level = swing.price
         if direction == Direction.LONG:
-            crossed = bars[i].c > level + buffer and bars[i - 1].c <= level + buffer
+            crossed = bars[i].close > level + buffer and bars[i - 1].close <= level + buffer
         else:
-            crossed = bars[i].c < level - buffer and bars[i - 1].c >= level - buffer
+            crossed = bars[i].close < level - buffer and bars[i - 1].close >= level - buffer
         if not crossed:
             continue
         displacement = (
@@ -107,10 +107,10 @@ def recent_bos(
     retest = False
     for bar in bars[bos_index + 1 : bos_index + 1 + config.retest_lookback]:
         if direction == Direction.LONG:
-            if bar.l <= level + zone and bar.c >= level:
+            if bar.low <= level + zone and bar.close >= level:
                 retest = True
                 break
-        elif bar.h >= level - zone and bar.c <= level:
+        elif bar.high >= level - zone and bar.close <= level:
             retest = True
             break
 

@@ -152,11 +152,11 @@ class PrimeXBTBroker:
         bars = [
             Bar(
                 t=int(row["t"]),
-                o=float(row["o"]),
-                h=float(row["h"]),
-                l=float(row["l"]),
-                c=float(row["c"]),
-                v=float(row.get("v", 0.0)),
+                open=float(row["o"]),
+                high=float(row["h"]),
+                low=float(row["l"]),
+                close=float(row["c"]),
+                volume=float(row.get("v", 0.0)),
             )
             for row in rows
         ]
