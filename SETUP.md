@@ -352,3 +352,24 @@ PrimeXBT documents MCP as an AI-assistant/human-confirmed trading interface. The
 For future autonomous/demo execution, keep the A+ strategy engine and add a separate PXTrader 2.0 Trade API broker adapter after validating PrimeXBT's current published authentication and endpoint specification.
 
 Do not bypass MCP confirmation mechanics to imitate a low-latency trading API.
+
+
+## 16. Windows timezone dependency
+
+If Windows shows `ZoneInfoNotFoundError` or `No module named 'tzdata'`, update to the latest project version and reinstall dependencies:
+
+```powershell
+git pull origin main
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+pytest
+```
+
+Version 0.2.1+ includes `tzdata` as a required dependency, so `ZoneInfo("UTC")` and `ZoneInfo("Asia/Manila")` work on Windows without a separate manual setup.
+
+For an older checkout, the immediate workaround is:
+
+```powershell
+pip install tzdata
+pytest
+```
