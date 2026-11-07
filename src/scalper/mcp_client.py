@@ -133,7 +133,7 @@ class OAuthCallbackServer:
             f"<title>{title}</title></head>"
             "<body style='font-family:system-ui;margin:48px'>"
             f"<h1>{title}</h1><p>{message}</p></body></html>"
-        ).encode("utf-8")
+        ).encode()
         response = (
             f"HTTP/1.1 {status}\r\n"
             "Content-Type: text/html; charset=utf-8\r\n"
