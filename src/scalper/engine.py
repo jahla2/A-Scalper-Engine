@@ -9,7 +9,6 @@ from .models import (
     Decision,
     Direction,
     ExecutionSignal,
-    Score,
     Setup,
     Signal,
     StructureSignal,
