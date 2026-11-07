@@ -51,7 +51,7 @@ async def test_scan_fetches_all_four_timeframes_even_when_1h_is_neutral() -> Non
     assert signal.regime.direction.value == "NEUTRAL"
     assert signal.setup.reason != "not evaluated"
     assert signal.structure.reason != "not evaluated"
-    assert signal.execution.structure != "UNKNOWN" or signal.bias.direction.value == "NEUTRAL"
+    assert any("1M execution" in reason for reason in signal.reasons)
 
 
 def test_strategy_catalog_contains_selectable_modes() -> None:
