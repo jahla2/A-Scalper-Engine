@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Moon, RefreshCw, Search, Sun, Wifi, WifiOff } from "lucide-react";
 import { api } from "./api";
 import { AnalysisLog } from "./components/AnalysisLog";
+import { InstrumentLogo } from "./components/InstrumentLogo";
 import { MarketChart } from "./components/MarketChart";
 import { ScorePanel } from "./components/ScorePanel";
 import { TimeframeGrid } from "./components/TimeframeGrid";
@@ -19,7 +20,7 @@ import type {
   Timeframe
 } from "./types";
 
-type Page = "dashboard" | "markets" | "strategies" | "analysis" | "settings";
+type Page = "dashboard" | "strategies" | "analysis" | "settings";
 
 const timeframes: Timeframe[] = ["1M", "5M", "15M", "1H"];
 
@@ -39,6 +40,8 @@ export default function App() {
   const [strategyBusy, setStrategyBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<SymbolSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scanBusy, setScanBusy] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
@@ -146,15 +149,34 @@ export default function App() {
     }
   };
 
-  const searchMarkets = async () => {
-    if (!search.trim()) return;
-    try {
-      const response = await api.searchSymbols(search.trim());
-      setResults(response.items);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+  useEffect(() => {
+    const query = search.trim();
+    if (query.length < 2) {
+      setResults([]);
+      setSearchLoading(false);
+      return;
     }
-  };
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const response = await api.searchSymbols(query);
+        if (!cancelled) setResults(response.items.slice(0, 8));
+      } catch (reason) {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [search]);
 
   const saveRuntimeSettings = async () => {
     if (!settings) return;
@@ -194,10 +216,15 @@ export default function App() {
       setSymbol(response.symbol);
       setResults([]);
       setSearch("");
-      await Promise.all([
+      setSearchFocused(false);
+      const [nextStatus] = await Promise.all([
+        api.status(),
         loadChart(response.symbol, timeframe),
         loadHistory(response.symbol)
       ]);
+      setStatus(nextStatus);
+      setQuote(nextStatus.quote);
+      setAnalysis(nextStatus.analysis);
       setPage("dashboard");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -222,7 +249,7 @@ export default function App() {
         </button>
 
         <nav>
-          {(["dashboard", "markets", "strategies", "analysis", "settings"] as Page[]).map((item) => (
+          {(["dashboard", "strategies", "analysis", "settings"] as Page[]).map((item) => (
             <button
               className={page === item ? "active" : ""}
               key={item}
@@ -257,21 +284,81 @@ export default function App() {
 
         {page === "dashboard" && (
           <>
+            <section className="dashboard-toolbar panel">
+              <div className="market-search-control">
+                <label>Market</label>
+                <div className="market-search-box">
+                  <Search size={17} />
+                  <input
+                    value={search}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setSearchFocused(true);
+                    }}
+                    placeholder={"Search BTC, ETH, XAU..."}
+                    aria-label="Search PrimeXBT market"
+                  />
+                  {searchLoading && <span className="search-loading">Searching</span>}
+                </div>
+                {searchFocused && search.trim().length >= 2 && (
+                  <div className="market-autocomplete panel">
+                    {results.map((item) => {
+                      const resultSymbol = String(item.symbol ?? "");
+                      return (
+                        <button
+                          key={resultSymbol}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => resultSymbol && void selectMarket(resultSymbol)}
+                        >
+                          <InstrumentLogo symbol={resultSymbol} size={34} />
+                          <span className="market-result-copy">
+                            <strong>{resultSymbol || "Unknown"}</strong>
+                            <small>{String(item.description ?? item.category ?? "PrimeXBT instrument")}</small>
+                          </span>
+                          <span className="market-result-category">
+                            {String(item.category ?? "")}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {!searchLoading && results.length === 0 && (
+                      <div className="autocomplete-empty">No matching PrimeXBT instruments.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="strategy-quick-select">
+                <label htmlFor="strategy-select">Strategy</label>
+                <div className="strategy-select-shell">
+                  <select
+                    id="strategy-select"
+                    value={selectedStrategy?.strategy_id ?? ""}
+                    disabled={strategyBusy !== null}
+                    onChange={(event) => void selectStrategyMode(event.target.value)}
+                  >
+                    {strategies.map((strategy) => (
+                      <option value={strategy.strategy_id} key={strategy.strategy_id}>
+                        {strategy.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <small>Full scan · 1H · 15M · 5M · 1M</small>
+              </div>
+            </section>
+
             <section className="market-header">
               <div>
                 <p className="eyebrow">Active market</p>
                 <div className="symbol-title">
+                  <InstrumentLogo symbol={symbol} size={42} />
                   <h1>{symbol}</h1>
                   <span className={quote?.market_open ? "market-open" : "market-closed"}>
                     {marketState}
                   </span>
-                </div>
-                <div className="active-strategy-line">
-                  <span>Strategy</span>
-                  <button onClick={() => setPage("strategies")}>
-                    {selectedStrategy?.name ?? analysis?.strategy ?? "A+ Structure MTF"}
-                  </button>
-                  <small>Full scan: 1H · 15M · 5M · 1M</small>
                 </div>
               </div>
               <div className="market-numbers">
@@ -413,44 +500,6 @@ export default function App() {
                 );
               })}
             </div>
-          </section>
-        )}
-
-        {page === "markets" && (
-          <section className="page-section">
-            <PageHeading
-              eyebrow="Instrument discovery"
-              title="Markets"
-              copy="Search PrimeXBT symbols and switch the monitored instrument safely."
-            />
-            <section className="panel">
-              <div className="search-row">
-                <Search size={18} />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && void searchMarkets()}
-                  placeholder="Search gold, BTC, ETH..."
-                />
-                <button className="primary-button" onClick={searchMarkets}>Search</button>
-              </div>
-              <div className="market-results">
-                {results.map((item) => {
-                  const resultSymbol = String(item.symbol ?? "");
-                  return (
-                    <button
-                      className="market-result"
-                      key={resultSymbol}
-                      onClick={() => resultSymbol && void selectMarket(resultSymbol)}
-                    >
-                      <strong>{resultSymbol || "Unknown"}</strong>
-                      <span>{String(item.description ?? item.category ?? "")}</span>
-                    </button>
-                  );
-                })}
-                {results.length === 0 && <div className="empty">Search for a PrimeXBT instrument.</div>}
-              </div>
-            </section>
           </section>
         )}
 

@@ -19,14 +19,18 @@ class CachedBroker:
         *,
         quote_ttl: float = 1.5,
         snapshot_ttl: float = 5.0,
+        search_ttl: float = 30.0,
         max_bars_per_series: int = 1000,
     ) -> None:
         self._broker = broker
         self._quote_ttl = quote_ttl
         self._snapshot_ttl = snapshot_ttl
+        self._search_ttl = search_ttl
         self._max_bars = max_bars_per_series
         self._resolved_symbols: dict[str, str] = {}
         self._symbol_info: dict[str, SymbolInfo] = {}
+        self._searches: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+        self._search_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._bars: dict[tuple[str, str], list[Bar]] = {}
         self._bar_locks: defaultdict[tuple[str, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._quotes: dict[str, tuple[float, Quote]] = {}
@@ -38,6 +42,8 @@ class CachedBroker:
             "quote_requests": 0,
             "snapshot_cache_hits": 0,
             "snapshot_requests": 0,
+            "search_cache_hits": 0,
+            "search_requests": 0,
         }
 
     async def account(self) -> Account:
@@ -53,7 +59,27 @@ class CachedBroker:
         return value
 
     async def search_symbols(self, query: str) -> list[dict[str, Any]]:
-        return await self._broker.search_symbols(query)
+        key = query.strip().lower()
+        if not key:
+            return []
+
+        now = monotonic()
+        cached = self._searches.get(key)
+        if cached and cached[0] > now:
+            self._metrics["search_cache_hits"] += 1
+            return [dict(item) for item in cached[1]]
+
+        async with self._search_locks[key]:
+            cached = self._searches.get(key)
+            if cached and cached[0] > monotonic():
+                self._metrics["search_cache_hits"] += 1
+                return [dict(item) for item in cached[1]]
+
+            self._metrics["search_requests"] += 1
+            items = await self._broker.search_symbols(query.strip())
+            copied = [dict(item) for item in items]
+            self._searches[key] = (monotonic() + self._search_ttl, copied)
+            return [dict(item) for item in copied]
 
     async def symbol_info(self, symbol: str) -> SymbolInfo:
         cached = self._symbol_info.get(symbol)
