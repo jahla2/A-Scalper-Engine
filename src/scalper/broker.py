@@ -119,9 +119,13 @@ class PrimeXBTBroker:
         )
         return self._account
 
-    async def resolve_symbol(self, query: str) -> str:
+    async def search_symbols(self, query: str) -> list[dict[str, Any]]:
         payload = self._payload(await self._read(self.FIND_SYMBOL, {"query": query}))
         symbols = payload.get("symbols", [])
+        return [dict(item) for item in symbols if isinstance(item, Mapping)]
+
+    async def resolve_symbol(self, query: str) -> str:
+        symbols = await self.search_symbols(query)
         exact = [str(item.get("symbol")) for item in symbols if item.get("symbol") == query]
         if len(exact) == 1:
             return exact[0]

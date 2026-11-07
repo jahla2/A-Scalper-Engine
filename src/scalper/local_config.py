@@ -36,25 +36,47 @@ class LocalConfig:
     account_id: str | None
     require_demo: bool
     poll_seconds: float
+    quote_poll_seconds: float
+    bar_poll_seconds: float
+    account_poll_seconds: float
     max_daily_drawdown_pct: float
     oauth_file: Path
     journal_file: Path
+    database_file: Path
+    api_host: str
+    api_port: int
+    ui_origin: str
 
     @classmethod
     def from_env(cls) -> LocalConfig:
         load_env_file()
         poll = float(os.getenv("SCALPER_POLL_SECONDS", "2.0"))
+        quote_poll = float(os.getenv("SCALPER_QUOTE_POLL_SECONDS", "2.0"))
+        bar_poll = float(os.getenv("SCALPER_BAR_POLL_SECONDS", "5.0"))
+        account_poll = float(os.getenv("SCALPER_ACCOUNT_POLL_SECONDS", "10.0"))
         drawdown = float(os.getenv("SCALPER_MAX_DAILY_DRAWDOWN_PCT", "2.0"))
-        if poll < 0.5:
-            raise ValueError("SCALPER_POLL_SECONDS must be >= 0.5")
+        api_port = int(os.getenv("SCALPER_API_PORT", "8000"))
+        for name, value in (
+            ("SCALPER_POLL_SECONDS", poll),
+            ("SCALPER_QUOTE_POLL_SECONDS", quote_poll),
+            ("SCALPER_BAR_POLL_SECONDS", bar_poll),
+            ("SCALPER_ACCOUNT_POLL_SECONDS", account_poll),
+        ):
+            if value < 0.5:
+                raise ValueError(f"{name} must be >= 0.5")
         if not 0 < drawdown <= 100:
             raise ValueError("SCALPER_MAX_DAILY_DRAWDOWN_PCT must be in (0, 100]")
+        if not 1 <= api_port <= 65535:
+            raise ValueError("SCALPER_API_PORT must be a valid TCP port")
         return cls(
             mcp_url=os.getenv("PRIMEXBT_MCP_URL", "https://api.primexbt.com/v2/mcp"),
             symbol=os.getenv("SCALPER_SYMBOL", "XAU/USD"),
             account_id=os.getenv("PRIMEXBT_ACCOUNT_ID") or None,
             require_demo=env_bool("SCALPER_REQUIRE_DEMO", True),
             poll_seconds=poll,
+            quote_poll_seconds=quote_poll,
+            bar_poll_seconds=bar_poll,
+            account_poll_seconds=account_poll,
             max_daily_drawdown_pct=drawdown,
             oauth_file=Path(
                 os.getenv("SCALPER_OAUTH_FILE", ".scalper/primexbt_oauth.json")
@@ -62,4 +84,10 @@ class LocalConfig:
             journal_file=Path(
                 os.getenv("SCALPER_JOURNAL_FILE", "logs/signals.jsonl")
             ),
+            database_file=Path(
+                os.getenv("SCALPER_DATABASE_FILE", ".scalper/analysis.db")
+            ),
+            api_host=os.getenv("SCALPER_API_HOST", "127.0.0.1"),
+            api_port=api_port,
+            ui_origin=os.getenv("SCALPER_UI_ORIGIN", "http://localhost:5173"),
         )
